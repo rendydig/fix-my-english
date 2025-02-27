@@ -36,3 +36,5 @@ build/
 # Coverage reports
 htmlcov/
 .coverage
+.env
+api.key

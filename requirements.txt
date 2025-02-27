@@ -3,3 +3,7 @@ pyautogui
 pywin32
 pystray
 Pillow
+langchain
+openrouter
+langchain_community
+openai

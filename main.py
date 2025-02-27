@@ -1,12 +1,14 @@
 import keyboard
 import tkinter as tk
-from tkinter import Entry, Frame, Text, Scrollbar, Label
+from tkinter import Frame, Text, Scrollbar, Label, messagebox
 import threading
 import pyautogui
 import pystray
-from PIL import Image, ImageDraw
 import os
 import sys
+from langchain.chat_models import ChatOpenAI
+from langchain_core.messages import HumanMessage
+from PIL import Image, ImageDraw
 
 class QuickInputApp:
     def __init__(self):
@@ -33,6 +35,31 @@ class QuickInputApp:
         
         # Create and show the system tray icon
         self.setup_tray_icon()
+        
+        # Initialize OpenRouter connection
+        try:
+            if not os.path.exists('api.key'):
+                messagebox.showerror('Error', 'api.key file not found! Please create the file with your OpenRouter API key.')
+                return
+            
+            with open('api.key', 'r') as f:
+                api_key = f.read().strip()
+                if not api_key:
+                    messagebox.showerror('Error', 'api.key file is empty! Please add your OpenRouter API key to the file.')
+                    return
+                
+            self.llm = ChatOpenAI(
+                openai_api_key=api_key,
+                openai_api_base='https://openrouter.ai/api/v1',
+                default_headers={
+                    "HTTP-Referer": "https://github.com/your-repo",
+                    "X-Title": "QuickInputApp"
+                },
+                model='deepseek/deepseek-chat:free'
+            )
+        except Exception as e:
+            messagebox.showerror('Error', f'Failed to initialize OpenRouter connection: {str(e)}')
+            return
     
     def setup_input_window(self):
         """Set up the floating input window"""
@@ -215,16 +242,22 @@ class QuickInputApp:
         self.root.after(300, self.auto_type_text)
     
     def auto_type_text(self):
-        """Auto-type the text that was entered in the input field"""
-        if not self.input_value:
+        """Process the input text and auto-type it"""
+        if not self.input_value.strip():
             return  # Don't type anything if the input was empty
             
         print(f"Auto-typing: {self.input_value}")
         
+        messages = [HumanMessage(content=f"Correct this text to professional English. Respond ONLY with the corrected text, without explanations, introductions, or any other content: {self.input_value}")]
+        response = self.llm.generate([messages])
+        
         try:
+            # Extract the content from the response
+            corrected_text = response.generations[0][0].text
+            
             # Use pyautogui to type the text
             # We use write instead of typewrite to handle special characters better
-            pyautogui.write(self.input_value)
+            pyautogui.write(corrected_text)
         except Exception as e:
             print(f"Error auto-typing text: {e}")
     
