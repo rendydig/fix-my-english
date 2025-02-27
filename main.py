@@ -7,7 +7,7 @@ import pystray
 import os
 import sys
 import google.generativeai as genai
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 class QuickInputApp:
     def __init__(self):
@@ -62,7 +62,13 @@ class QuickInputApp:
         self.input_window = tk.Toplevel(self.root)
         self.input_window.overrideredirect(True)  # Remove window border
         self.input_window.attributes("-topmost", True)  # Always on top
-        self.input_window.attributes("-alpha", 0.9)  # Slight transparency
+        self.input_window.attributes("-alpha", 0.95)  # Slight transparency (increased for better readability)
+        
+        # Add method to Canvas class to create rounded rectangles
+        tk.Canvas.create_rounded_rectangle = self._create_rounded_rectangle
+        
+        # Set transparent background for the window to create rounded corners effect
+        self.input_window.attributes("-transparentcolor", "")
         
         # Calculate screen dimensions to center the window
         screen_width = self.root.winfo_screenwidth()
@@ -76,18 +82,47 @@ class QuickInputApp:
         
         self.input_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         
-        # Create a frame with a border effect
-        self.frame = Frame(self.input_window, bg="#2c3e50", padx=2, pady=2)
-        self.frame.pack(fill=tk.BOTH, expand=True)
+        # Set background color for the window
+        self.input_window.configure(bg="#3498db")  # Modern blue color
+        
+        # Create a canvas for rounded rectangle
+        self.canvas = tk.Canvas(self.input_window, bg="#3498db", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Draw rounded rectangle on canvas
+        radius = 15
+        self.rounded_rect = self.canvas.create_rounded_rectangle(
+            3, 3, window_width-3, window_height-3, radius, 
+            fill="#ffffff", outline="#3498db", width=2
+        )
+        
+        # Create a frame inside the rounded rectangle
+        frame_margin = 20  # Margin from the edges
+        self.frame = Frame(self.canvas, bg="#ffffff", bd=0, highlightthickness=0)
+        self.frame.place(x=frame_margin, y=frame_margin, 
+                        width=window_width-2*frame_margin, 
+                        height=window_height-2*frame_margin)
+        
+        # Create a title label
+        self.title_label = Label(self.frame, text="Fix my english", 
+                               font=("Segoe UI", 12, "bold"), fg="#3498db", bg="#ffffff")
+        self.title_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Create a container for the text field with a border
+        self.text_container = Frame(self.frame, bg="#e0e0e0", padx=2, pady=2, 
+                                   highlightbackground="#3498db", highlightthickness=1)
+        self.text_container.pack(fill=tk.BOTH, expand=True)
         
         # Create the multi-line text input field
-        self.input_field = Text(self.frame, font=("Arial", 12), bg="#ecf0f1", 
-                                fg="#2c3e50", insertbackground="#2c3e50",
-                                relief=tk.FLAT, wrap=tk.WORD, height=5)
-        self.input_field.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.input_field = Text(self.text_container, font=("Segoe UI", 11), bg="#ffffff", 
+                               fg="#34495e", insertbackground="#3498db",
+                               relief=tk.FLAT, wrap=tk.WORD, height=5,
+                               padx=8, pady=8)
+        self.input_field.pack(fill=tk.BOTH, expand=True)
         
-        # Add a scrollbar
-        scrollbar = Scrollbar(self.input_field)
+        # Add a scrollbar with modern styling
+        scrollbar = Scrollbar(self.input_field, bg="#ffffff", troughcolor="#f0f0f0", 
+                             activebackground="#3498db")
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.input_field.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.input_field.yview)
@@ -96,31 +131,60 @@ class QuickInputApp:
         self.input_field.bind("<Control-Return>", self.on_ctrl_enter_pressed)
         self.input_field.bind("<Escape>", self.hide_input)
         
-        # Add a small label to indicate how to submit
-        self.hint_label = Label(self.frame, text="Press Ctrl+Enter to submit", 
-                                  font=("Arial", 8), fg="#7f8c8d", bg="#ecf0f1")
-        self.hint_label.pack(side=tk.BOTTOM, fill=tk.X, padx=5)
+        # Add a small label to indicate how to submit with improved styling
+        self.hint_label = Label(self.frame, text="Press Ctrl+Enter to submit or Esc to cancel", 
+                              font=("Segoe UI", 9), fg="#7f8c8d", bg="#ffffff")
+        self.hint_label.pack(side=tk.BOTTOM, fill=tk.X, pady=(5, 0))
+        
+        # Make the window draggable
+        self.canvas.bind("<ButtonPress-1>", self.start_move)
+        self.canvas.bind("<ButtonRelease-1>", self.stop_move)
+        self.canvas.bind("<B1-Motion>", self.do_move)
         
         # Hide the window initially
         self.input_window.withdraw()
     
-    def create_tray_icon_image(self):
-        """Create a simple icon for the system tray"""
-        # Create a simple colored square icon
-        width = 64
-        height = 64
-        color = "#2c3e50"  # Dark blue
+    def _create_rounded_rectangle(self, x1, y1, x2, y2, radius=25, **kwargs):
+        """Helper function to create a rounded rectangle on a canvas"""
+        points = [
+            x1 + radius, y1,
+            x2 - radius, y1,
+            x2, y1,
+            x2, y1 + radius,
+            x2, y2 - radius,
+            x2, y2,
+            x2 - radius, y2,
+            x1 + radius, y2,
+            x1, y2,
+            x1, y2 - radius,
+            x1, y1 + radius,
+            x1, y1
+        ]
         
-        image = Image.new('RGB', (width, height), color)
-        dc = ImageDraw.Draw(image)
+        return self.canvas.create_polygon(points, **kwargs, smooth=True)
+    
+    def start_move(self, event):
+        """Start window dragging"""
+        self.x = event.x
+        self.y = event.y
+    
+    def stop_move(self, event):
+        """Stop window dragging"""
+        self.x = None
+        self.y = None
+    
+    def do_move(self, event):
+        """Move the window while dragging"""
+        if self.x is None or self.y is None:
+            return
+            
+        deltax = event.x - self.x
+        deltay = event.y - self.y
         
-        # Draw a white 'Q' in the center
-        # Use a simple method that doesn't require a font
-        dc.rectangle([width//4, height//4, width*3//4, height*3//4], outline="white", width=2)
-        dc.line([width//4, height//4, width*3//4, height*3//4], fill="white", width=2)
-        dc.line([width*3//4, height//4, width//4, height*3//4], fill="white", width=2)
+        x = self.input_window.winfo_x() + deltax
+        y = self.input_window.winfo_y() + deltay
         
-        return image
+        self.input_window.geometry(f"+{x}+{y}")
     
     def setup_tray_icon(self):
         """Set up the system tray icon with a menu"""
@@ -209,6 +273,12 @@ class QuickInputApp:
         self.input_field.delete("1.0", tk.END)  # Clear text from line 1, character 0 to end
         self.input_window.deiconify()
         
+        # Apply a fade-in effect
+        for alpha in range(0, 96, 5):  # 0 to 95% in steps of 5%
+            self.input_window.attributes("-alpha", alpha/100)
+            self.input_window.update()
+            self.input_window.after(10)  # Short delay for animation
+        
         # Enhanced focus handling
         self.input_window.update_idletasks()  # Process all pending events
         self.input_field.focus_force()  # Force focus to the text field
@@ -222,6 +292,12 @@ class QuickInputApp:
     
     def hide_input(self, event=None):
         """Hide the input field"""
+        # Apply a fade-out effect
+        for alpha in range(95, -1, -5):  # 95% to 0% in steps of 5%
+            self.input_window.attributes("-alpha", alpha/100)
+            self.input_window.update()
+            self.input_window.after(10)  # Short delay for animation
+            
         self.input_window.withdraw()
         self.input_visible = False
         print("Input field hidden")
@@ -294,6 +370,48 @@ class QuickInputApp:
         finally:
             self.running = False
             keyboard.unhook_all()  # Clean up keyboard hooks
+    
+    def create_tray_icon_image(self):
+        """Create a modern icon for the system tray"""
+        # Create a rounded square icon with gradient
+        width = 64
+        height = 64
+        
+        # Create base image with transparency
+        image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        dc = ImageDraw.Draw(image)
+        
+        # Draw a rounded rectangle
+        radius = 15
+        color1 = "#3498db"  # Start color - light blue
+        color2 = "#2980b9"  # End color - darker blue
+        
+        # Draw the rounded rectangle (simulated with multiple rectangles and ellipses)
+        dc.rectangle([radius, 0, width-radius, height], fill=color1)
+        dc.rectangle([0, radius, width, height-radius], fill=color1)
+        
+        # Draw the four corners
+        dc.ellipse([0, 0, radius*2, radius*2], fill=color1)
+        dc.ellipse([width-radius*2, 0, width, radius*2], fill=color1)
+        dc.ellipse([0, height-radius*2, radius*2, height], fill=color1)
+        dc.ellipse([width-radius*2, height-radius*2, width, height], fill=color1)
+        
+        # Add a "Q" letter in the center
+        try:
+            # Try to use a font if available
+            font = ImageFont.truetype("arial.ttf", 32)
+            text_width, text_height = dc.textsize("Q", font=font)
+            text_x = (width - text_width) // 2
+            text_y = (height - text_height) // 2
+            dc.text((text_x, text_y), "Q", fill="white", font=font)
+        except:
+            # Fallback to drawing a simple Q shape
+            margin = width // 4
+            dc.ellipse([margin, margin, width-margin, height-margin], outline="white", width=3)
+            # Add a small line for the Q's tail
+            dc.line([width//2, height-margin, width-margin, height-margin], fill="white", width=3)
+        
+        return image
 
 if __name__ == "__main__":
     app = QuickInputApp()
