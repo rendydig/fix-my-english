@@ -405,11 +405,11 @@ class QuickInputApp:
             text_y = (height - text_height) // 2
             dc.text((text_x, text_y), "F", fill="white", font=font)
         except:
-            # Fallback to drawing a simple Q shape
+            # Fallback to drawing a simple F shape
             margin = width // 4
-            dc.ellipse([margin, margin, width-margin, height-margin], outline="white", width=3)
-            # Add a small line for the Q's tail
-            dc.line([width//2, height-margin, width-margin, height-margin], fill="white", width=3)
+            dc.line([margin, margin, margin, height-margin], fill="white", width=3)
+            dc.line([margin, margin, width-margin, margin], fill="white", width=3)
+            dc.line([margin, height//2, width-margin, height//2], fill="white", width=3)
         
         return image
 
