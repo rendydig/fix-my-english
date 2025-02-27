@@ -5,3 +5,4 @@ pystray
 Pillow
 openai
 google-generativeai>=0.3.0
+PyInstaller 

@@ -202,7 +202,7 @@ class QuickInputApp:
         )
         
         # Create the icon
-        self.icon = pystray.Icon("quick_input", icon_image, "Quick Input", menu)
+        self.icon = pystray.Icon("quick_input", icon_image, "Fix My Eng", menu)
         
         # Run the icon in a separate thread
         threading.Thread(target=self.icon.run, daemon=True).start()
@@ -396,14 +396,14 @@ class QuickInputApp:
         dc.ellipse([0, height-radius*2, radius*2, height], fill=color1)
         dc.ellipse([width-radius*2, height-radius*2, width, height], fill=color1)
         
-        # Add a "Q" letter in the center
+        # Add a "F" letter in the center
         try:
             # Try to use a font if available
             font = ImageFont.truetype("arial.ttf", 32)
-            text_width, text_height = dc.textsize("Q", font=font)
+            text_width, text_height = dc.textsize("F", font=font)
             text_x = (width - text_width) // 2
             text_y = (height - text_height) // 2
-            dc.text((text_x, text_y), "Q", fill="white", font=font)
+            dc.text((text_x, text_y), "F", fill="white", font=font)
         except:
             # Fallback to drawing a simple Q shape
             margin = width // 4
