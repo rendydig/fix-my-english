@@ -185,7 +185,15 @@ class QuickInputApp:
         # Clear previous input and show the window
         self.input_field.delete("1.0", tk.END)  # Clear text from line 1, character 0 to end
         self.input_window.deiconify()
-        self.input_field.focus_set()
+        
+        # Enhanced focus handling
+        self.input_window.update_idletasks()  # Process all pending events
+        self.input_field.focus_force()  # Force focus to the text field
+        self.input_window.lift()  # Ensure window is on top
+        
+        # Place cursor at the beginning of the text field
+        self.input_field.mark_set("insert", "1.0")
+        
         self.input_visible = True
         print("Input field shown")
     
@@ -199,8 +207,26 @@ class QuickInputApp:
         """Handle when Ctrl+Enter is pressed in the input field"""
         self.input_value = self.input_field.get("1.0", tk.END).strip()  # Get all text from line 1, character 0 to end
         print(f"Input received: {self.input_value}")
-        # Here you can add any action you want to perform with the input
+        
+        # Hide the input window first
         self.hide_input()
+        
+        # Give a small delay to allow the window to close and focus to return to the previous application
+        self.root.after(300, self.auto_type_text)
+    
+    def auto_type_text(self):
+        """Auto-type the text that was entered in the input field"""
+        if not self.input_value:
+            return  # Don't type anything if the input was empty
+            
+        print(f"Auto-typing: {self.input_value}")
+        
+        try:
+            # Use pyautogui to type the text
+            # We use write instead of typewrite to handle special characters better
+            pyautogui.write(self.input_value)
+        except Exception as e:
+            print(f"Error auto-typing text: {e}")
     
     def keyboard_listener(self):
         """Thread function to listen for keyboard events"""
