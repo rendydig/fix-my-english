@@ -20,7 +20,12 @@ A simple Windows application that provides a quick multi-line text input field w
    ```
    pip install -r requirements.txt
    ```
-
+3. Create and activate a virtual environment:
+   ```
+   python -m venv venv
+   venv\Scripts\activate  # On Windows
+   source venv/bin/activate  # On macOS and Linux
+   ```
 ## Usage
 
 1. Run the application:
