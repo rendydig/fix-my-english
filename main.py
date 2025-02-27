@@ -1,6 +1,7 @@
 import keyboard
 import tkinter as tk
-from tkinter import Frame, Text, Scrollbar, Label, messagebox
+from tkinter import Frame, Text, Label, messagebox, Canvas
+from tkinter import ttk
 import threading
 import pyautogui
 import pystray
@@ -19,6 +20,9 @@ class QuickInputApp:
         # Set up the main window
         self.root = tk.Tk()
         self.root.withdraw()  # Hide main window
+        
+        # Configure custom scrollbar style
+        self.configure_scrollbar_style()
         
         # Create the input window
         self.setup_input_window()
@@ -76,7 +80,7 @@ class QuickInputApp:
         
         # Set window size and position - increased height for multi-line text
         window_width = 400
-        window_height = 150  # Increased height for multi-line text
+        window_height = 250  # Increased height for multi-line text
         x_position = (screen_width - window_width) // 2
         y_position = (screen_height - window_height) // 2
         
@@ -86,7 +90,7 @@ class QuickInputApp:
         self.input_window.configure(bg="#3498db")  # Modern blue color
         
         # Create a canvas for rounded rectangle
-        self.canvas = tk.Canvas(self.input_window, bg="#3498db", highlightthickness=0)
+        self.canvas = tk.Canvas(self.input_window, bg="#3498db", highlightthickness=1)  # Reduce border thickness
         self.canvas.pack(fill=tk.BOTH, expand=True)
         
         # Draw rounded rectangle on canvas
@@ -113,16 +117,24 @@ class QuickInputApp:
                                    highlightbackground="#3498db", highlightthickness=1)
         self.text_container.pack(fill=tk.BOTH, expand=True)
         
-        # Create the multi-line text input field
-        self.input_field = Text(self.text_container, font=("Segoe UI", 11), bg="#ffffff", 
-                               fg="#34495e", insertbackground="#3498db",
-                               relief=tk.FLAT, wrap=tk.WORD, height=5,
-                               padx=8, pady=8)
-        self.input_field.pack(fill=tk.BOTH, expand=True)
+        # Create a frame to hold the text field and scrollbar side by side
+        self.text_scroll_frame = Frame(self.text_container, bg="#ffffff")
+        self.text_scroll_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Add a scrollbar with modern styling
-        scrollbar = Scrollbar(self.input_field, bg="#ffffff", troughcolor="#f0f0f0", 
-                             activebackground="#3498db")
+        # Create the multi-line text input field with padding on the right for scrollbar
+        self.input_field = Text(self.text_scroll_frame, font=("Segoe UI", 11), bg="#ffffff", 
+                               fg="#34495e", insertbackground="#3498db",
+                               relief=tk.FLAT, wrap=tk.WORD, height=10,  # Increase text field height
+                               padx=8, pady=8)
+        self.input_field.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Create a frame for the custom scrollbar with padding
+        self.scrollbar_frame = Frame(self.text_scroll_frame, bg="#ffffff", width=16)
+        self.scrollbar_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 4))
+        
+        # Add a modern scrollbar with rounded style
+        scrollbar = ttk.Scrollbar(self.scrollbar_frame, 
+                             style="rounded.Vertical.TScrollbar")
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.input_field.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.input_field.yview)
@@ -143,6 +155,7 @@ class QuickInputApp:
         
         # Hide the window initially
         self.input_window.withdraw()
+        self.last_position = None  # Add variable to store last position
     
     def _create_rounded_rectangle(self, x1, y1, x2, y2, radius=25, **kwargs):
         """Helper function to create a rounded rectangle on a canvas"""
@@ -206,20 +219,17 @@ class QuickInputApp:
         
         # Run the icon in a separate thread
         threading.Thread(target=self.icon.run, daemon=True).start()
-        print("System tray icon created")
     
     def register_hotkey(self):
         """Register the global hotkey based on service status"""
         if self.service_running:
             try:
                 keyboard.add_hotkey('ctrl+alt+space', self.toggle_input_field)
-                print("Hotkey registered: CTRL+ALT+SPACE")
             except Exception as e:
                 print(f"Error registering hotkey: {e}")
         else:
             try:
                 keyboard.unhook_all_hotkeys()
-                print("Hotkeys unregistered")
             except Exception as e:
                 print(f"Error unregistering hotkeys: {e}")
     
@@ -230,7 +240,6 @@ class QuickInputApp:
             self.register_hotkey()
             # Update the icon menu to reflect the new state
             self.icon.update_menu()
-            print("Service started")
     
     def stop_service(self):
         """Stop the service to disable hotkey functionality"""
@@ -242,7 +251,6 @@ class QuickInputApp:
                 self.hide_input()
             # Update the icon menu to reflect the new state
             self.icon.update_menu()
-            print("Service stopped")
     
     def toggle_input_field(self):
         """Show or hide the input field based on current state"""
@@ -263,11 +271,14 @@ class QuickInputApp:
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         window_width = 400
-        window_height = 150  # Match the new height
+        window_height = 250  # Match the new height
         x_position = (screen_width - window_width) // 2
         y_position = (screen_height - window_height) // 2
         
-        self.input_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+        if self.last_position:
+            self.input_window.geometry(f"+{self.last_position[0]}+{self.last_position[1]}")  # Restore last position
+        else:
+            self.input_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         
         # Clear previous input and show the window
         self.input_field.delete("1.0", tk.END)  # Clear text from line 1, character 0 to end
@@ -288,10 +299,12 @@ class QuickInputApp:
         self.input_field.mark_set("insert", "1.0")
         
         self.input_visible = True
-        print("Input field shown")
     
     def hide_input(self, event=None):
         """Hide the input field"""
+        # Store position before hiding
+        self.last_position = (self.input_window.winfo_x(), self.input_window.winfo_y())
+        
         # Apply a fade-out effect
         for alpha in range(95, -1, -5):  # 95% to 0% in steps of 5%
             self.input_window.attributes("-alpha", alpha/100)
@@ -300,12 +313,10 @@ class QuickInputApp:
             
         self.input_window.withdraw()
         self.input_visible = False
-        print("Input field hidden")
     
     def on_ctrl_enter_pressed(self, event):
         """Handle when Ctrl+Enter is pressed in the input field"""
         self.input_value = self.input_field.get("1.0", tk.END).strip()  # Get all text from line 1, character 0 to end
-        print(f"Input received: {self.input_value}")
         
         # Hide the input window first
         self.hide_input()
@@ -317,8 +328,6 @@ class QuickInputApp:
         """Auto-type the corrected text"""
         if not self.input_value.strip():
             return  # Don't type anything if the input was empty
-            
-        print(f"Auto-typing: {self.input_value}")
         
         try:
             # Use a direct prompt approach instead of message chaining
@@ -346,7 +355,6 @@ class QuickInputApp:
     
     def quit_app(self):
         """Quit the application completely"""
-        print("Quitting application...")
         self.running = False
         # Stop the icon
         self.icon.stop()
@@ -362,8 +370,6 @@ class QuickInputApp:
     def run(self):
         """Run the application"""
         try:
-            print("Application running. Press CTRL+ALT+SPACE to show the input field.")
-            print("Check the system tray for the application icon.")
             self.root.mainloop()
         except Exception as e:
             print(f"Error in main loop: {e}")
@@ -412,6 +418,37 @@ class QuickInputApp:
             dc.line([margin, height//2, width-margin, height//2], fill="white", width=3)
         
         return image
+    
+    def configure_scrollbar_style(self):
+        """Configure custom scrollbar style to match the modern look"""
+        style = ttk.Style()
+        
+        # Configure the scrollbar style
+        style.configure("rounded.Vertical.TScrollbar", 
+                      background="#3498db",  # Scrollbar color - bright blue
+                      troughcolor="#f0f0f0",  # Background color - light gray
+                      borderwidth=0, 
+                      arrowsize=0,  # No arrows
+                      relief="flat")
+        
+        # Define element layouts - remove default arrows
+        style.layout("rounded.Vertical.TScrollbar", 
+                   [('Vertical.Scrollbar.trough',
+                     {'sticky': 'ns', 'children':
+                      [('Vertical.Scrollbar.thumb', 
+                        {'expand': '1', 'sticky': 'nswe'})
+                      ]})])
+        
+        # Make the scrollbar rounded and thinner
+        style.configure("rounded.Vertical.TScrollbar", 
+                      gripcount=0,
+                      width=6,  # Make it thinner to match image
+                      background="#3498db",
+                      troughcolor="#f0f0f0",
+                      bordercolor="#f0f0f0",
+                      lightcolor="#3498db",
+                      darkcolor="#2980b9",
+                      borderwidth=0)
 
 if __name__ == "__main__":
     app = QuickInputApp()
