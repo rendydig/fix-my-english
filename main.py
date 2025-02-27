@@ -9,6 +9,7 @@ import os
 import sys
 import google.generativeai as genai
 from PIL import Image, ImageDraw, ImageFont
+import re
 
 class QuickInputApp:
     def __init__(self):
@@ -16,6 +17,12 @@ class QuickInputApp:
         self.input_visible = False
         self.input_value = ""
         self.service_running = True
+        
+        # Tips feature variables
+        self.tips_enabled = False  # Disabled by default
+        self.tips_timer = None
+        self.tips_window = None
+        self.tips_interval = 1 * 60 * 1000  # 5 minutes in milliseconds
         
         # Set up the main window
         self.root = tk.Tk()
@@ -60,6 +67,9 @@ class QuickInputApp:
         # Initialize the model
         genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
         self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
+        
+        # Initialize the tips feature
+        self.setup_tips_feature()
     
     def setup_input_window(self):
         """Set up the floating input window"""
@@ -67,9 +77,6 @@ class QuickInputApp:
         self.input_window.overrideredirect(True)  # Remove window border
         self.input_window.attributes("-topmost", True)  # Always on top
         self.input_window.attributes("-alpha", 0.95)  # Slight transparency (increased for better readability)
-        
-        # Add method to Canvas class to create rounded rectangles
-        tk.Canvas.create_rounded_rectangle = self._create_rounded_rectangle
         
         # Set transparent background for the window to create rounded corners effect
         self.input_window.attributes("-transparentcolor", "")
@@ -83,15 +90,14 @@ class QuickInputApp:
         window_height = 250  # Increased height for multi-line text
         x_position = (screen_width - window_width) // 2
         y_position = (screen_height - window_height) // 2
-        
         self.input_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         
-        # Set background color for the window
-        self.input_window.configure(bg="#3498db")  # Modern blue color
-        
-        # Create a canvas for rounded rectangle
-        self.canvas = tk.Canvas(self.input_window, bg="#3498db", highlightthickness=1)  # Reduce border thickness
+        # Create a canvas for the background with rounded corners
+        self.canvas = tk.Canvas(self.input_window, bg="#3498db", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Add the create_rounded_rectangle method to this canvas
+        self.canvas.create_rounded_rectangle = lambda *args, **kwargs: self._create_rounded_rectangle(self.canvas, *args, **kwargs)
         
         # Draw rounded rectangle on canvas
         radius = 15
@@ -157,7 +163,7 @@ class QuickInputApp:
         self.input_window.withdraw()
         self.last_position = None  # Add variable to store last position
     
-    def _create_rounded_rectangle(self, x1, y1, x2, y2, radius=25, **kwargs):
+    def _create_rounded_rectangle(self, canvas, x1, y1, x2, y2, radius=25, **kwargs):
         """Helper function to create a rounded rectangle on a canvas"""
         points = [
             x1 + radius, y1,
@@ -174,7 +180,13 @@ class QuickInputApp:
             x1, y1
         ]
         
-        return self.canvas.create_polygon(points, **kwargs, smooth=True)
+        # Use the canvas that was passed as 'self'
+        if hasattr(self, 'create_polygon'):
+            # When called directly on a canvas
+            return self.create_polygon(points, **kwargs, smooth=True)
+        else:
+            # When called from the QuickInputApp instance
+            return canvas.create_polygon(points, **kwargs, smooth=True)
     
     def start_move(self, event):
         """Start window dragging"""
@@ -211,6 +223,10 @@ class QuickInputApp:
             pystray.MenuItem('Start Service', self.start_service, enabled=lambda item: not self.service_running),
             pystray.MenuItem('Stop Service', self.stop_service, enabled=lambda item: self.service_running),
             pystray.MenuItem('Show Input', self.show_input, enabled=lambda item: self.service_running),
+            pystray.MenuItem('Tips Options', pystray.Menu(
+                pystray.MenuItem('Enable Tips', self.enable_tips, enabled=lambda item: not self.tips_enabled),
+                pystray.MenuItem('Disable Tips', self.disable_tips, enabled=lambda item: self.tips_enabled)
+            )),
             pystray.MenuItem('Quit', self.quit_app)
         )
         
@@ -356,6 +372,15 @@ class QuickInputApp:
     def quit_app(self):
         """Quit the application completely"""
         self.running = False
+        
+        # Clean up tips timer
+        if self.tips_timer:
+            self.root.after_cancel(self.tips_timer)
+            self.tips_timer = None
+        
+        # Close any open tip window
+        self.close_tip_window()
+        
         # Stop the icon
         self.icon.stop()
         # Clean up keyboard hooks
@@ -449,6 +474,217 @@ class QuickInputApp:
                       lightcolor="#3498db",
                       darkcolor="#2980b9",
                       borderwidth=0)
+    
+    def setup_tips_feature(self):
+        """Initialize the tips feature timer"""
+        if self.tips_enabled and self.tips_timer is None:
+            # Start the timer to show tips every 5 minutes
+            self.show_tip()  # Show first tip immediately
+            self.schedule_next_tip()
+        elif not self.tips_enabled and self.tips_timer is not None:
+            # Cancel the timer if tips are disabled
+            self.root.after_cancel(self.tips_timer)
+            self.tips_timer = None
+    
+    def schedule_next_tip(self):
+        """Schedule the next tip to be shown"""
+        if self.tips_timer is not None:
+            self.root.after_cancel(self.tips_timer)
+        self.tips_timer = self.root.after(self.tips_interval, self.show_tip)
+    
+    def show_tip(self):
+        """Show a tip in a popup window"""
+        if not self.tips_enabled:
+            return
+            
+        # Get a tip from Gemini AI
+        tip = self.get_english_tip()
+        if not tip:
+            # If we couldn't get a tip, try again later
+            self.schedule_next_tip()
+            return
+            
+        # Close any existing tip window
+        self.close_tip_window()
+        
+        # Create a new tip window
+        self.tips_window = tk.Toplevel(self.root)
+        self.tips_window.overrideredirect(True)  # Remove window border
+        self.tips_window.attributes("-topmost", True)  # Always on top
+        
+        # Variables for mouse tracking
+        self.mouse_over_tips = False
+        self.close_timer_id = None
+        
+        # Position the window in the top right corner
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = 400
+        window_height = 300  # Increased height for longer tips
+        x_position = screen_width - window_width - 20
+        y_position = 40
+        self.tips_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+        
+        # Create a canvas for rounded rectangle background
+        canvas = tk.Canvas(self.tips_window, bg="#3498db", highlightthickness=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Add the create_rounded_rectangle method to this canvas
+        canvas.create_rounded_rectangle = lambda *args, **kwargs: self._create_rounded_rectangle(canvas, *args, **kwargs)
+        
+        # Draw rounded rectangle on canvas
+        radius = 15
+        canvas.create_rounded_rectangle(
+            3, 3, window_width-3, window_height-3, radius, 
+            fill="#ffffff", outline="#3498db", width=2
+        )
+        
+        # Create a frame inside the rounded rectangle
+        frame = Frame(canvas, bg="#ffffff")
+        frame.place(relx=0.05, rely=0.05, relwidth=0.9, relheight=0.9)
+        
+        # Add a title
+        title_label = Label(frame, text="English Speaking Tip", font=("Segoe UI", 12, "bold"), 
+                           bg="#ffffff", fg="#3498db")
+        title_label.pack(pady=(10, 5), anchor="w")
+        
+        # Create a frame for the scrollable content
+        content_frame = Frame(frame, bg="#ffffff")
+        content_frame.pack(fill="both", expand=True, pady=5)
+        
+        # Add a scrollable text widget for the tip
+        tip_text = Text(content_frame, font=("Segoe UI", 10), bg="#ffffff", fg="#34495e",
+                       wrap="word", height=10, borderwidth=0, highlightthickness=0)
+        tip_text.insert("1.0", tip)
+        tip_text.config(state="disabled")  # Make it read-only
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=tip_text.yview)
+        tip_text.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack the scrollbar and text widget
+        scrollbar.pack(side="right", fill="y")
+        tip_text.pack(side="left", fill="both", expand=True)
+        
+        # Add a close button
+        close_button = Label(frame, text="×", font=("Segoe UI", 16, "bold"), 
+                            bg="#ffffff", fg="#e74c3c", cursor="hand2")
+        close_button.place(relx=1.0, rely=0.0, anchor="ne")
+        close_button.bind("<Button-1>", lambda e: self.close_tip_window(force_close=True))
+        
+        # Bind mouse enter and leave events to track when mouse is over the window
+        self.tips_window.bind("<Enter>", self.on_mouse_enter_tips)
+        self.tips_window.bind("<Leave>", self.on_mouse_leave_tips)
+        
+        # Start the auto-close timer
+        self.reset_close_timer()
+        
+        # Schedule the next tip
+        self.schedule_next_tip()
+    
+    def on_mouse_enter_tips(self, event):
+        """Called when mouse enters the tips window"""
+        self.mouse_over_tips = True
+        # Cancel the close timer if it's running
+        if self.close_timer_id:
+            self.tips_window.after_cancel(self.close_timer_id)
+            self.close_timer_id = None
+    
+    def on_mouse_leave_tips(self, event):
+        """Called when mouse leaves the tips window"""
+        self.mouse_over_tips = False
+        # Start the close timer
+        self.reset_close_timer()
+    
+    def reset_close_timer(self):
+        """Reset the timer that closes the tips window"""
+        if self.close_timer_id:
+            self.tips_window.after_cancel(self.close_timer_id)
+        
+        # Set a new timer to close the window after 10 seconds
+        self.close_timer_id = self.tips_window.after(10000, self.close_tip_window)
+    
+    def close_tip_window(self, force_close=False):
+        """Close the tip window if it exists and mouse is not over it"""
+        if self.tips_window:
+            # Force close or only close if mouse is not over the window
+            if force_close or not self.mouse_over_tips:
+                try:
+                    self.tips_window.destroy()
+                    self.tips_window = None
+                    self.close_timer_id = None
+                except:
+                    pass
+            else:
+                # If mouse is still over window, reset the timer
+                self.reset_close_timer()
+    
+    def get_english_tip(self):
+        """Get an English speaking tip from Gemini AI"""
+        try:
+            prompt = """
+            create me single tips (but not too short), about how to be speak as professional in english, 
+            give me an explanantion In indonesia Language , and show me the example.
+            
+            your response should be not more than 300 characters.
+            """
+            
+            response = self.model.generate_content(prompt)
+            if response and hasattr(response, 'text'):
+                # Convert markdown to plain text
+                return self.markdown_to_plain_text(response.text.strip())
+            return "Failed to generate tip. Please try again later."
+        except Exception as e:
+            print(f"Error generating tip: {e}")
+            return None
+    
+    def markdown_to_plain_text(self, markdown_text):
+        """Convert markdown text to plain text"""
+        # Remove headers (# Header)
+        text = re.sub(r'#+\s+(.*)', r'\1', markdown_text)
+        
+        # Remove bold (**text**)
+        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+        
+        # Remove italic (*text*)
+        text = re.sub(r'\*(.*?)\*', r'\1', text)
+        
+        # Remove code blocks (```code```)
+        text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+        
+        # Remove inline code (`code`)
+        text = re.sub(r'`(.*?)`', r'\1', text)
+        
+        # Remove bullet points (- item)
+        text = re.sub(r'^\s*[-*+]\s+(.*?)$', r'\1', text, flags=re.MULTILINE)
+        
+        # Remove numbered lists (1. item)
+        text = re.sub(r'^\s*\d+\.\s+(.*?)$', r'\1', text, flags=re.MULTILINE)
+        
+        # Remove horizontal rules (---, ___, ***)
+        text = re.sub(r'^\s*[-_*]{3,}\s*$', '', text, flags=re.MULTILINE)
+        
+        # Remove links ([text](url))
+        text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
+        
+        # Remove extra newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        return text.strip()
+    
+    def enable_tips(self):
+        """Enable the tips feature"""
+        self.tips_enabled = True
+        self.setup_tips_feature()
+        self.icon.update_menu()
+    
+    def disable_tips(self):
+        """Disable the tips feature"""
+        self.tips_enabled = False
+        self.setup_tips_feature()
+        if self.tips_window:
+            self.close_tip_window()
+        self.icon.update_menu()
 
 if __name__ == "__main__":
     app = QuickInputApp()
