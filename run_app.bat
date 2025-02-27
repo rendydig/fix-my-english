@@ -1,0 +1,3 @@
+@echo off
+echo Starting Quick Input Application...
+python main.py
