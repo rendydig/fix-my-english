@@ -3,8 +3,5 @@ pyautogui
 pywin32
 pystray
 Pillow
-langchain
-openrouter
-langchain_community
 openai
-langchain-google-genai
+google-generativeai>=0.3.0

@@ -6,8 +6,7 @@ import pyautogui
 import pystray
 import os
 import sys
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
+import google.generativeai as genai
 from PIL import Image, ImageDraw
 
 class QuickInputApp:
@@ -55,7 +54,8 @@ class QuickInputApp:
                 return
         
         # Initialize the model
-        self.model = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
     
     def setup_input_window(self):
         """Set up the floating input window"""
@@ -245,17 +245,14 @@ class QuickInputApp:
         print(f"Auto-typing: {self.input_value}")
         
         try:
-            # Format the input for Google Generative AI
-            from langchain_core.messages import HumanMessage
+            # Use a direct prompt approach instead of message chaining
+            prompt = f"Improve this text to make it more suitable for casual business English. Correct any grammar or spelling errors, and make it sound natural but still professional. Respond ONLY with the improved version, without explanations or additional content. The text is: {self.input_value}"
             
-            # Create a proper message object
-            messages = [HumanMessage(content=f"Correct this text to professional English. Respond ONLY with the corrected text, without explanations, introductions, or any other content: {self.input_value}")]
-            
-            # Generate response
-            response = self.model.invoke(messages)
+            # Generate response with direct prompt
+            response = self.model.generate_content(prompt)
             
             # Extract the content from the response
-            corrected_text = response.content
+            corrected_text = response.text.strip().replace('"', '').replace('\n', ' ')
             
             # Use pyautogui to type the text
             # We use write instead of typewrite to handle special characters better
