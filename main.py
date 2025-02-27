@@ -22,7 +22,7 @@ class QuickInputApp:
         self.tips_enabled = False  # Disabled by default
         self.tips_timer = None
         self.tips_window = None
-        self.tips_interval = 1 * 60 * 1000  # 5 minutes in milliseconds
+        self.tips_interval = 15 * 60 * 1000  # 5 minutes in milliseconds
         
         # Set up the main window
         self.root = tk.Tk()
@@ -224,7 +224,7 @@ class QuickInputApp:
             pystray.MenuItem('Stop Service', self.stop_service, enabled=lambda item: self.service_running),
             pystray.MenuItem('Show Input', self.show_input, enabled=lambda item: self.service_running),
             pystray.MenuItem('Tips Options', pystray.Menu(
-                pystray.MenuItem('Enable Tips', self.enable_tips, enabled=lambda item: not self.tips_enabled),
+                pystray.MenuItem('Enable Tips (Every 15 min)', self.enable_tips, enabled=lambda item: not self.tips_enabled),
                 pystray.MenuItem('Disable Tips', self.disable_tips, enabled=lambda item: self.tips_enabled)
             )),
             pystray.MenuItem('Quit', self.quit_app)
