@@ -22,6 +22,7 @@ class QuickInputApp:
         self.tips_enabled = False  # Disabled by default
         self.tips_timer = None
         self.tips_window = None
+        self.latest_tip = None  # Store the latest tip
         
         # Tips intervals in milliseconds
         self.tips_intervals = {
@@ -240,7 +241,8 @@ class QuickInputApp:
                     pystray.MenuItem('3 minutes', self.set_interval_3min, checked=lambda item: self.current_interval_key == "3min"),
                     pystray.MenuItem('5 minutes', self.set_interval_5min, checked=lambda item: self.current_interval_key == "5min"),
                     pystray.MenuItem('10 minutes', self.set_interval_10min, checked=lambda item: self.current_interval_key == "10min")
-                ))
+                )),
+                pystray.MenuItem('Show Latest Tip', self.show_latest_tip)
             )),
             pystray.MenuItem('Quit', self.quit_app)
         )
@@ -529,6 +531,9 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
             self.schedule_next_tip()
             return
             
+        # Store the latest tip
+        self.latest_tip = tip
+            
         # Close any existing tip window
         self.close_tip_window()
         
@@ -648,16 +653,17 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
         """Get an English speaking tip from Gemini AI"""
         try:
             prompt = """
-            create me single tips (but not too short), about write and speak to be speak as professional in english, 
-            give me an explanantion In indonesia Language , and show me the examples 
-            for the wrong one (in english) and Right one (in profesional english).
-            your response should be not more than 300 characters.
-            - Improve grammar and spelling
-            - Make it sound natural for casual business communication
-            - Maintain the original meaning
-            - Only return the suggestion tips with indonesia explanations only
-            """
-            
+Provide a brief tip (but not too short) on writing and speaking professionally in English. Explain in Indonesian, and show examples of incorrect (in English) and correct (in professional English) usage. Keep the number of characters of your response maximum in 400 characters. And also, Use the response template as below: 
+
+Incorrect Example: 
+\"incorrect profesional English example\" (meaning in Indonesian here)
+
+Correct Example: 
+\"correct profesional English example\" (meaning in Indonesian here)
+
+Explanation: 
+\"explanation in Indonesian language why the correct profesional English example is suitable for professional communication\".
+"""            
             response = self.model.generate_content(prompt)
             if response and hasattr(response, 'text'):
                 # Convert markdown to plain text
@@ -742,6 +748,93 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
     def set_interval_10min(self):
         """Set tips interval to 10 minutes"""
         self.set_tips_interval("10min")
+    
+    def show_latest_tip(self):
+        """Show the latest tip on demand"""
+        if self.latest_tip:
+            # Close any existing tip window
+            self.close_tip_window()
+            
+            # Create a new tip window
+            self.tips_window = tk.Toplevel(self.root)
+            self.tips_window.overrideredirect(True)  # Remove window border
+            self.tips_window.attributes("-topmost", True)  # Always on top
+            
+            # Variables for mouse tracking
+            self.mouse_over_tips = False
+            self.close_timer_id = None
+            
+            # Position the window in the top right corner
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            window_width = 400
+            window_height = 300  # Increased height for longer tips
+            x_position = screen_width - window_width - 20
+            y_position = 40
+            self.tips_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+            
+            # Create a canvas for rounded rectangle background
+            canvas = tk.Canvas(self.tips_window, bg="#3498db", highlightthickness=0)
+            canvas.pack(fill=tk.BOTH, expand=True)
+            
+            # Add the create_rounded_rectangle method to this canvas
+            canvas.create_rounded_rectangle = lambda *args, **kwargs: self._create_rounded_rectangle(canvas, *args, **kwargs)
+            
+            # Draw rounded rectangle on canvas
+            radius = 15
+            canvas.create_rounded_rectangle(
+                3, 3, window_width-3, window_height-3, radius, 
+                fill="#ffffff", outline="#3498db", width=2
+            )
+            
+            # Create a frame inside the rounded rectangle
+            frame = Frame(canvas, bg="#ffffff")
+            frame.place(relx=0.05, rely=0.05, relwidth=0.9, relheight=0.9)
+            
+            # Add a title
+            title_label = Label(frame, text="Latest English Speaking Tip", font=("Segoe UI", 12, "bold"), 
+                               bg="#ffffff", fg="#3498db")
+            title_label.pack(pady=(10, 5), anchor="w")
+            
+            # Create a frame for the scrollable content
+            content_frame = Frame(frame, bg="#ffffff")
+            content_frame.pack(fill="both", expand=True, pady=5)
+            
+            # Add a scrollable text widget for the tip
+            tip_text = Text(content_frame, font=("Segoe UI", 10), bg="#ffffff", fg="#34495e",
+                           wrap="word", height=10, borderwidth=0, highlightthickness=0)
+            tip_text.insert("1.0", self.latest_tip)
+            tip_text.config(state="disabled")  # Make it read-only
+            
+            # Add scrollbar
+            scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=tip_text.yview)
+            tip_text.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack the scrollbar and text widget
+            scrollbar.pack(side="right", fill="y")
+            tip_text.pack(side="left", fill="both", expand=True)
+            
+            # Add a close button
+            close_button = Label(frame, text="×", font=("Segoe UI", 16, "bold"), 
+                                bg="#ffffff", fg="#e74c3c", cursor="hand2")
+            close_button.place(relx=1.0, rely=0.0, anchor="ne")
+            close_button.bind("<Button-1>", lambda e: self.close_tip_window(force_close=True))
+            
+            # Bind mouse enter and leave events to track when mouse is over the window
+            self.tips_window.bind("<Enter>", self.on_mouse_enter_tips)
+            self.tips_window.bind("<Leave>", self.on_mouse_leave_tips)
+            
+            # Set a timer to close the window after 10 seconds if mouse is not over it
+            self.reset_close_timer()
+        else:
+            # If no tip is available, generate a new one and show it
+            tip = self.get_english_tip()
+            if tip:
+                self.latest_tip = tip
+                self.show_latest_tip()
+            else:
+                # Show a message if no tip could be generated
+                messagebox.showinfo("No Tip Available", "No tip is currently available. Please try again later.")
 
 if __name__ == "__main__":
     app = QuickInputApp()

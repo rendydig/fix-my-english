@@ -54,5 +54,5 @@ The project's dependencies can be inferred from the `requirements.txt` file and 
 
 ## How to build to be .exe file
 ```bash
- pyinstaller --onefile --noconsole main.py 
+pyinstaller --onefile --noconsole main.py 
 ```
