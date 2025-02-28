@@ -22,7 +22,16 @@ class QuickInputApp:
         self.tips_enabled = False  # Disabled by default
         self.tips_timer = None
         self.tips_window = None
-        self.tips_interval = 15 * 60 * 1000  # 5 minutes in milliseconds
+        
+        # Tips intervals in milliseconds
+        self.tips_intervals = {
+            "1min": 1 * 60 * 1000,
+            "3min": 3 * 60 * 1000,
+            "5min": 5 * 60 * 1000,
+            "10min": 10 * 60 * 1000
+        }
+        self.current_interval_key = "5min"  # Default interval key
+        self.tips_interval = self.tips_intervals[self.current_interval_key]  # Default to 5 minutes
         
         # Set up the main window
         self.root = tk.Tk()
@@ -224,8 +233,14 @@ class QuickInputApp:
             pystray.MenuItem('Stop Service', self.stop_service, enabled=lambda item: self.service_running),
             pystray.MenuItem('Show Input', self.show_input, enabled=lambda item: self.service_running),
             pystray.MenuItem('Tips Options', pystray.Menu(
-                pystray.MenuItem('Enable Tips (Every 15 min)', self.enable_tips, enabled=lambda item: not self.tips_enabled),
-                pystray.MenuItem('Disable Tips', self.disable_tips, enabled=lambda item: self.tips_enabled)
+                pystray.MenuItem('Enable Tips', self.enable_tips, enabled=lambda item: not self.tips_enabled),
+                pystray.MenuItem('Disable Tips', self.disable_tips, enabled=lambda item: self.tips_enabled),
+                pystray.MenuItem('Set Interval', pystray.Menu(
+                    pystray.MenuItem('1 minute', self.set_interval_1min, checked=lambda item: self.current_interval_key == "1min"),
+                    pystray.MenuItem('3 minutes', self.set_interval_3min, checked=lambda item: self.current_interval_key == "3min"),
+                    pystray.MenuItem('5 minutes', self.set_interval_5min, checked=lambda item: self.current_interval_key == "5min"),
+                    pystray.MenuItem('10 minutes', self.set_interval_10min, checked=lambda item: self.current_interval_key == "10min")
+                ))
             )),
             pystray.MenuItem('Quit', self.quit_app)
         )
@@ -346,8 +361,18 @@ class QuickInputApp:
             return  # Don't type anything if the input was empty
         
         try:
-            # Use a direct prompt approach instead of message chaining
-            prompt = f"Improve this text to make it more suitable for casual business English. Correct any grammar or spelling errors, and make it sound natural but still professional. Respond ONLY with the improved version, without explanations or additional content. The text is: {self.input_value}"
+            # Use a more explicit prompt structure to avoid confusion with user input
+            prompt = f"""TASK: Fix the English text below.
+INSTRUCTIONS: 
+- Improve grammar and spelling
+- Make it sound natural for casual business communication
+- Maintain the original meaning
+- Only return the corrected text with no explanations
+
+TEXT TO FIX:
+{self.input_value}
+
+Remember to ONLY return the corrected version of the text above, nothing else."""
             
             # Generate response with direct prompt
             response = self.model.generate_content(prompt)
@@ -623,10 +648,14 @@ class QuickInputApp:
         """Get an English speaking tip from Gemini AI"""
         try:
             prompt = """
-            create me single tips (but not too short), about how to be speak as professional in english, 
-            give me an explanantion In indonesia Language , and show me the example.
-            
+            create me single tips (but not too short), about write and speak to be speak as professional in english, 
+            give me an explanantion In indonesia Language , and show me the examples 
+            for the wrong one (in english) and Right one (in profesional english).
             your response should be not more than 300 characters.
+            - Improve grammar and spelling
+            - Make it sound natural for casual business communication
+            - Maintain the original meaning
+            - Only return the suggestion tips with indonesia explanations only
             """
             
             response = self.model.generate_content(prompt)
@@ -675,6 +704,8 @@ class QuickInputApp:
     def enable_tips(self):
         """Enable the tips feature"""
         self.tips_enabled = True
+        # Use the current interval
+        self.tips_interval = self.tips_intervals[self.current_interval_key]
         self.setup_tips_feature()
         self.icon.update_menu()
     
@@ -685,6 +716,32 @@ class QuickInputApp:
         if self.tips_window:
             self.close_tip_window()
         self.icon.update_menu()
+        
+    def set_tips_interval(self, interval_key):
+        """Set the tips interval to the specified key"""
+        if interval_key in self.tips_intervals:
+            self.current_interval_key = interval_key
+            self.tips_interval = self.tips_intervals[interval_key]
+            # If tips are enabled, restart the timer with the new interval
+            if self.tips_enabled:
+                self.schedule_next_tip()
+            self.icon.update_menu()
+    
+    def set_interval_1min(self):
+        """Set tips interval to 1 minute"""
+        self.set_tips_interval("1min")
+        
+    def set_interval_3min(self):
+        """Set tips interval to 3 minutes"""
+        self.set_tips_interval("3min")
+        
+    def set_interval_5min(self):
+        """Set tips interval to 5 minutes"""
+        self.set_tips_interval("5min")
+        
+    def set_interval_10min(self):
+        """Set tips interval to 10 minutes"""
+        self.set_tips_interval("10min")
 
 if __name__ == "__main__":
     app = QuickInputApp()
