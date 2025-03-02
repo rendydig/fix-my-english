@@ -10,6 +10,8 @@ import sys
 import google.generativeai as genai
 from PIL import Image, ImageDraw, ImageFont
 import re
+import show_latest_tips
+from tray_icon import create_tray_icon_image
 
 class QuickInputApp:
     def __init__(self):
@@ -223,7 +225,7 @@ class QuickInputApp:
     
     def setup_tray_icon(self):
         """Set up the system tray icon with a menu"""
-        icon_image = self.create_tray_icon_image()
+        icon_image = create_tray_icon_image()
         
         # Create the menu items
         menu = (
@@ -242,7 +244,7 @@ class QuickInputApp:
                     pystray.MenuItem('5 minutes', self.set_interval_5min, checked=lambda item: self.current_interval_key == "5min"),
                     pystray.MenuItem('10 minutes', self.set_interval_10min, checked=lambda item: self.current_interval_key == "10min")
                 )),
-                pystray.MenuItem('Show Latest Tip', self.show_latest_tip)
+                pystray.MenuItem('Show Latest Tip', lambda: show_latest_tips.show_latest_tips(self))
             )),
             pystray.MenuItem('Quit', self.quit_app)
         )
@@ -428,48 +430,6 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
         finally:
             self.running = False
             keyboard.unhook_all()  # Clean up keyboard hooks
-    
-    def create_tray_icon_image(self):
-        """Create a modern icon for the system tray"""
-        # Create a rounded square icon with gradient
-        width = 64
-        height = 64
-        
-        # Create base image with transparency
-        image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-        dc = ImageDraw.Draw(image)
-        
-        # Draw a rounded rectangle
-        radius = 15
-        color1 = "#3498db"  # Start color - light blue
-        color2 = "#2980b9"  # End color - darker blue
-        
-        # Draw the rounded rectangle (simulated with multiple rectangles and ellipses)
-        dc.rectangle([radius, 0, width-radius, height], fill=color1)
-        dc.rectangle([0, radius, width, height-radius], fill=color1)
-        
-        # Draw the four corners
-        dc.ellipse([0, 0, radius*2, radius*2], fill=color1)
-        dc.ellipse([width-radius*2, 0, width, radius*2], fill=color1)
-        dc.ellipse([0, height-radius*2, radius*2, height], fill=color1)
-        dc.ellipse([width-radius*2, height-radius*2, width, height], fill=color1)
-        
-        # Add a "F" letter in the center
-        try:
-            # Try to use a font if available
-            font = ImageFont.truetype("arial.ttf", 32)
-            text_width, text_height = dc.textsize("F", font=font)
-            text_x = (width - text_width) // 2
-            text_y = (height - text_height) // 2
-            dc.text((text_x, text_y), "F", fill="white", font=font)
-        except:
-            # Fallback to drawing a simple F shape
-            margin = width // 4
-            dc.line([margin, margin, margin, height-margin], fill="white", width=3)
-            dc.line([margin, margin, width-margin, margin], fill="white", width=3)
-            dc.line([margin, height//2, width-margin, height//2], fill="white", width=3)
-        
-        return image
     
     def configure_scrollbar_style(self):
         """Configure custom scrollbar style to match the modern look"""
@@ -665,6 +625,8 @@ Explanation:
 \"explanation in Indonesian language why the correct profesional English example is suitable for professional communication\".
 """            
             response = self.model.generate_content(prompt)
+            
+            # Extract the content from the response
             if response and hasattr(response, 'text'):
                 # Convert markdown to plain text
                 return self.markdown_to_plain_text(response.text.strip())
@@ -749,93 +711,7 @@ Explanation:
         """Set tips interval to 10 minutes"""
         self.set_tips_interval("10min")
     
-    def show_latest_tip(self):
-        """Show the latest tip on demand"""
-        if self.latest_tip:
-            # Close any existing tip window
-            self.close_tip_window()
-            
-            # Create a new tip window
-            self.tips_window = tk.Toplevel(self.root)
-            self.tips_window.overrideredirect(True)  # Remove window border
-            self.tips_window.attributes("-topmost", True)  # Always on top
-            
-            # Variables for mouse tracking
-            self.mouse_over_tips = False
-            self.close_timer_id = None
-            
-            # Position the window in the top right corner
-            screen_width = self.root.winfo_screenwidth()
-            screen_height = self.root.winfo_screenheight()
-            window_width = 400
-            window_height = 300  # Increased height for longer tips
-            x_position = screen_width - window_width - 20
-            y_position = 40
-            self.tips_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
-            
-            # Create a canvas for rounded rectangle background
-            canvas = tk.Canvas(self.tips_window, bg="#3498db", highlightthickness=0)
-            canvas.pack(fill=tk.BOTH, expand=True)
-            
-            # Add the create_rounded_rectangle method to this canvas
-            canvas.create_rounded_rectangle = lambda *args, **kwargs: self._create_rounded_rectangle(canvas, *args, **kwargs)
-            
-            # Draw rounded rectangle on canvas
-            radius = 15
-            canvas.create_rounded_rectangle(
-                3, 3, window_width-3, window_height-3, radius, 
-                fill="#ffffff", outline="#3498db", width=2
-            )
-            
-            # Create a frame inside the rounded rectangle
-            frame = Frame(canvas, bg="#ffffff")
-            frame.place(relx=0.05, rely=0.05, relwidth=0.9, relheight=0.9)
-            
-            # Add a title
-            title_label = Label(frame, text="Latest English Speaking Tip", font=("Segoe UI", 12, "bold"), 
-                               bg="#ffffff", fg="#3498db")
-            title_label.pack(pady=(10, 5), anchor="w")
-            
-            # Create a frame for the scrollable content
-            content_frame = Frame(frame, bg="#ffffff")
-            content_frame.pack(fill="both", expand=True, pady=5)
-            
-            # Add a scrollable text widget for the tip
-            tip_text = Text(content_frame, font=("Segoe UI", 10), bg="#ffffff", fg="#34495e",
-                           wrap="word", height=10, borderwidth=0, highlightthickness=0)
-            tip_text.insert("1.0", self.latest_tip)
-            tip_text.config(state="disabled")  # Make it read-only
-            
-            # Add scrollbar
-            scrollbar = ttk.Scrollbar(content_frame, orient="vertical", command=tip_text.yview)
-            tip_text.configure(yscrollcommand=scrollbar.set)
-            
-            # Pack the scrollbar and text widget
-            scrollbar.pack(side="right", fill="y")
-            tip_text.pack(side="left", fill="both", expand=True)
-            
-            # Add a close button
-            close_button = Label(frame, text="×", font=("Segoe UI", 16, "bold"), 
-                                bg="#ffffff", fg="#e74c3c", cursor="hand2")
-            close_button.place(relx=1.0, rely=0.0, anchor="ne")
-            close_button.bind("<Button-1>", lambda e: self.close_tip_window(force_close=True))
-            
-            # Bind mouse enter and leave events to track when mouse is over the window
-            self.tips_window.bind("<Enter>", self.on_mouse_enter_tips)
-            self.tips_window.bind("<Leave>", self.on_mouse_leave_tips)
-            
-            # Set a timer to close the window after 10 seconds if mouse is not over it
-            self.reset_close_timer()
-        else:
-            # If no tip is available, generate a new one and show it
-            tip = self.get_english_tip()
-            if tip:
-                self.latest_tip = tip
-                self.show_latest_tip()
-            else:
-                # Show a message if no tip could be generated
-                messagebox.showinfo("No Tip Available", "No tip is currently available. Please try again later.")
-
+    
 if __name__ == "__main__":
     app = QuickInputApp()
     app.run()
