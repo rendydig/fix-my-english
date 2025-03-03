@@ -360,6 +360,14 @@ class QuickInputApp:
                                   font=("Segoe UI", 8), fg="#7f8c8d", bg="#ffffff")
         self.shortcut_label.pack(anchor=tk.W, pady=(0, 5))
         
+        # Add explain toggle checkbox
+        self.explain_var = tk.BooleanVar()
+        self.explain_toggle = tk.Checkbutton(self.frame, text="Explain to me", 
+                                           variable=self.explain_var, 
+                                           font=("Segoe UI", 9), fg="#34495e", bg="#ffffff",
+                                           activebackground="#ffffff", activeforeground="#3498db")
+        self.explain_toggle.pack(anchor=tk.W, pady=(0, 5))
+        
         # Create a container for the text field with a border
         self.text_container = Frame(self.frame, bg="#e0e0e0", padx=2, pady=2, 
                                    highlightbackground="#3498db", highlightthickness=1)
@@ -587,7 +595,12 @@ class QuickInputApp:
         self.hide_input()
         
         # Give a small delay to allow the window to close and focus to return to the previous application
-        self.root.after(300, self.auto_type_text)
+        if self.explain_var.get():
+            # If explain toggle is active, show explanation
+            self.root.after(300, self.explain_text)
+        else:
+            # Otherwise, auto-type the corrected text
+            self.root.after(300, self.auto_type_text)
     
     def auto_type_text(self):
         """Auto-type the corrected text"""
@@ -968,6 +981,130 @@ Explanation:
         """Set tips interval to 10 minutes"""
         self.set_tips_interval("10min")
     
+    def explain_text(self):
+        """Show explanation of text in Indonesian"""
+        if not self.input_value.strip():
+            return  # Don't explain anything if the input was empty
+        
+        try:
+            # Use a specific prompt for Indonesian explanation
+            prompt = f"""TASK: Transform the English text below in Indonesian and explain to me with instruction below.
+INSTRUCTIONS: 
+- Analyze the English text provided
+- Please explain its meaning in Indonesian, but keep it brief.
+- Provide any helpful context or clarification
+- Make sure the Indonesian explanation is natural and easy to understand
+
+TEXT TO transform and explain:
+{self.input_value}
+
+Remember to provide a detailed explanation in Indonesian language. and please don't add any extra text after the explanation"""
+            
+            # Generate response with direct prompt
+            response = self.model.generate_content(prompt)
+            
+            # Extract the content from the response
+            explanation = response.text.strip()
+            
+            # Create notification window with explanation
+            self.show_explanation_window(explanation)
+        except Exception as e:
+            print(f"Error explaining text: {e}")
+            
+    def show_explanation_window(self, explanation_text):
+        """Show a notification window with the explanation"""
+        # Create a new window
+        explanation_window = tk.Toplevel(self.root)
+        explanation_window.title("Explanation")
+        explanation_window.overrideredirect(True)  # Remove window border
+        explanation_window.attributes("-topmost", True)  # Always on top
+        
+        # Set window size and position
+        window_width = 450
+        window_height = 350
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x_position = (screen_width - window_width) // 2
+        y_position = (screen_height - window_height) // 2
+        explanation_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+        
+        # Create a canvas for rounded rectangle background
+        canvas = tk.Canvas(explanation_window, bg="#3498db", highlightthickness=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Add the create_rounded_rectangle method to this canvas
+        canvas.create_rounded_rectangle = lambda *args, **kwargs: self._create_rounded_rectangle(canvas, *args, **kwargs)
+        
+        # Draw rounded rectangle
+        radius = 15
+        canvas.create_rounded_rectangle(
+            3, 3, window_width-3, window_height-3, radius, 
+            fill="#ffffff", outline="#3498db", width=2
+        )
+        
+        # Add title
+        title_label = Label(canvas, text="Explanation", font=("Segoe UI", 14, "bold"), 
+                          bg="#ffffff", fg="#3498db")
+        title_label.place(relx=0.5, rely=0.12, anchor="center")
+        
+        # Create a frame for the scrollable content
+        content_frame = Frame(canvas, bg="#ffffff")
+        content_frame.place(relx=0.5, rely=0.55, anchor="center", width=window_width-40, height=window_height-120)
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", style="rounded.Vertical.TScrollbar")
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Add text widget for the explanation
+        explanation_text_widget = Text(content_frame, font=("Segoe UI", 10), 
+                                     bg="#ffffff", fg="#34495e", wrap=tk.WORD,
+                                     yscrollcommand=scrollbar.set)
+        explanation_text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=explanation_text_widget.yview)
+        
+        # Insert the explanation
+        explanation_text_widget.insert(tk.END, explanation_text)
+        explanation_text_widget.config(state=tk.DISABLED)  # Make it read-only
+        
+        # Add close button
+        close_button = Label(canvas, text="×", font=("Segoe UI", 16, "bold"), 
+                           bg="#ffffff", fg="#e74c3c", cursor="hand2")
+        close_button.place(relx=0.95, rely=0.05, anchor="ne")
+        close_button.bind("<Button-1>", lambda e: explanation_window.destroy())
+        
+        # Add "OK" button
+        ok_button = tk.Button(canvas, text="OK", font=("Segoe UI", 10, "bold"),
+                            bg="#3498db", fg="white", relief="flat", padx=15, pady=5,
+                            command=explanation_window.destroy, cursor="hand2")
+        ok_button.place(relx=0.5, rely=0.9, anchor="center")
+        
+        # Make window draggable
+        canvas.bind("<ButtonPress-1>", lambda event: self._start_dragging(event, explanation_window))
+        canvas.bind("<ButtonRelease-1>", lambda event: self._stop_dragging(event))
+        canvas.bind("<B1-Motion>", lambda event: self._do_dragging(event, explanation_window))
+        
+    def _start_dragging(self, event, window):
+        """Start dragging a window"""
+        self._drag_x = event.x
+        self._drag_y = event.y
+        
+    def _stop_dragging(self, event):
+        """Stop dragging a window"""
+        self._drag_x = None
+        self._drag_y = None
+        
+    def _do_dragging(self, event, window):
+        """Move the window while dragging"""
+        if self._drag_x is None or self._drag_y is None:
+            return
+            
+        deltax = event.x - self._drag_x
+        deltay = event.y - self._drag_y
+        
+        x = window.winfo_x() + deltax
+        y = window.winfo_y() + deltay
+        
+        window.geometry(f"+{x}+{y}")
     
 if __name__ == "__main__":
     app = QuickInputApp()
