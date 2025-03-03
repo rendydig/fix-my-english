@@ -1,0 +1,18 @@
+{
+  "name": "fix-my-english",
+  "version": "1.0.0",
+  "description": "An Electron app to help improve English text with AI assistance",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "electron": "^28.0.0",
+    "electron-store": "^8.1.0",
+    "google-auth-library": "^9.0.0",
+    "@google/generative-ai": "^0.1.0"
+  }
+}
