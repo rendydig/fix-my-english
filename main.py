@@ -140,11 +140,27 @@ class QuickInputApp:
         
         # Add explain toggle checkbox
         self.explain_var = tk.BooleanVar()
-        self.explain_toggle = tk.Checkbutton(self.frame, text="Explain to me", 
+        
+        # Add custom prompt toggle checkbox
+        self.custom_prompt_var = tk.BooleanVar()
+        
+        # Create a frame to hold the toggles side by side
+        toggle_frame = Frame(self.frame, bg="#ffffff")
+        toggle_frame.pack(anchor=tk.W, pady=(0, 5), fill=tk.X)
+        
+        # Add explain toggle to the toggle frame
+        self.explain_toggle = tk.Checkbutton(toggle_frame, text="Explain to me", 
                                            variable=self.explain_var, 
                                            font=("Segoe UI", 9), fg="#34495e", bg="#ffffff",
                                            activebackground="#ffffff", activeforeground="#3498db")
-        self.explain_toggle.pack(anchor=tk.W, pady=(0, 5))
+        self.explain_toggle.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Add custom prompt toggle to the toggle frame
+        self.custom_prompt_toggle = tk.Checkbutton(toggle_frame, text="Custom Prompt", 
+                                           variable=self.custom_prompt_var, 
+                                           font=("Segoe UI", 9), fg="#34495e", bg="#ffffff",
+                                           activebackground="#ffffff", activeforeground="#3498db")
+        self.custom_prompt_toggle.pack(side=tk.LEFT)
         
         # Create a container for the text field with a border
         self.text_container = Frame(self.frame, bg="#e0e0e0", padx=2, pady=2, 
@@ -373,7 +389,10 @@ class QuickInputApp:
         self.hide_input()
         
         # Give a small delay to allow the window to close and focus to return to the previous application
-        if self.explain_var.get():
+        if self.custom_prompt_var.get():
+            # If custom prompt toggle is active, execute the custom prompt
+            self.root.after(300, self.execute_custom_prompt)
+        elif self.explain_var.get():
             # If explain toggle is active, show explanation
             self.root.after(300, self.explain_text)
         else:
@@ -761,6 +780,37 @@ Explanation:
     def set_interval_10min(self):
         """Set tips interval to 10 minutes"""
         self.set_tips_interval("10min")
+    
+    def execute_custom_prompt(self):
+        """Execute a custom prompt directly with Gemini"""
+        if not self.input_value.strip():
+            return  # Don't do anything if the input was empty
+        
+        try:
+            # Add a brief instruction to keep the response concise
+            prompt = f"""TASK: Execute the following prompt and keep your response brief with no further explanation and only have single option as output.
+
+PROMPT:
+{self.input_value}
+
+Remember to be concise and direct in your response."""
+            
+            # Generate response with direct prompt
+            response = self.model.generate_content(prompt)
+            
+            # Extract the content from the response
+            result = response.text.strip()
+            
+            if self.explain_var.get():
+                # If explain is also toggled, show the result in a notification window
+                self.show_explanation_window(result)
+            else:
+                # Otherwise, auto-type the result
+                pyautogui.write(result)
+                
+        except Exception as e:
+            print(f"Error executing custom prompt: {e}")
+            messagebox.showerror('Error', f'Failed to execute custom prompt: {str(e)}')
     
     def explain_text(self):
         """Show explanation of text in Indonesian"""
