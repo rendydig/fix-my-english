@@ -14,6 +14,8 @@ from tray_icon import create_tray_icon_image
 import time
 from loading_window import LoadingWindow
 from notification_window import NotificationWindow
+import logging
+import datetime
 
 class QuickInputApp:
     def __init__(self):
@@ -38,6 +40,9 @@ class QuickInputApp:
         }
         self.current_interval_key = "5min"  # Default interval key
         self.tips_interval = self.tips_intervals[self.current_interval_key]  # Default to 5 minutes
+        
+        # Set up logging
+        self.setup_logging()
         
         # Set up the main window
         self.root = tk.Tk()
@@ -81,10 +86,31 @@ class QuickInputApp:
         
         # Initialize the model
         genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-        self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Initialize the tips feature
         self.setup_tips_feature()
+    
+    def setup_logging(self):
+        """Set up logging configuration"""
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Create a timestamp for the log filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d")
+        log_file = os.path.join(log_dir, f"gemini_api_{timestamp}.log")
+        
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
+        
+        logging.info("Logging system initialized")
     
     def setup_input_window(self):
         """Set up the floating input window"""
@@ -418,8 +444,14 @@ TEXT TO FIX:
 
 Remember to ONLY return the corrected version of the text above, nothing else."""
             
+            # Log the prompt being sent
+            logging.info(f"Sending correction prompt to Gemini API: {self.input_value[:100]}...")
+            
             # Generate response with direct prompt
             response = self.model.generate_content(prompt)
+            
+            # Log the response received
+            logging.info(f"Received correction response from Gemini API: {response.text[:100]}...")
             
             # Extract the content from the response
             corrected_text = response.text.strip().replace('"', '').replace('\n', ' ')
@@ -428,7 +460,7 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
             # We use write instead of typewrite to handle special characters better
             pyautogui.write(corrected_text)
         except Exception as e:
-            print(f"Error auto-typing text: {e}")
+            logging.error(f"Error auto-typing text: {str(e)}")
             messagebox.showerror('Error', f'Failed to generate text: {str(e)}')
     
     def keyboard_listener(self):
@@ -694,7 +726,13 @@ Correct Example:
 Explanation: 
 \"explanation in Indonesian language why the correct profesional English example is suitable for professional communication\".
 """            
+            # Log the prompt being sent
+            logging.info("Sending tip generation prompt to Gemini API")
+            
             response = self.model.generate_content(prompt)
+            
+            # Log the response received
+            logging.info(f"Received tip response from Gemini API: {response.text[:100]}...")
             
             # Extract the content from the response
             if response and hasattr(response, 'text'):
@@ -702,7 +740,7 @@ Explanation:
                 return self.markdown_to_plain_text(response.text.strip())
             return "Failed to generate tip. Please try again later."
         except Exception as e:
-            print(f"Error generating tip: {e}")
+            logging.error(f"Error generating tip: {str(e)}")
             return None
     
     def markdown_to_plain_text(self, markdown_text):
@@ -795,8 +833,14 @@ PROMPT:
 
 Remember to be concise and direct in your response."""
             
+            # Log the custom prompt being sent
+            logging.info(f"Sending custom prompt to Gemini API: {self.input_value[:100]}...")
+            
             # Generate response with direct prompt
             response = self.model.generate_content(prompt)
+            
+            # Log the response received
+            logging.info(f"Received custom prompt response from Gemini API: {response.text[:100]}...")
             
             # Extract the content from the response
             result = response.text.strip()
@@ -809,7 +853,7 @@ Remember to be concise and direct in your response."""
                 pyautogui.write(result)
                 
         except Exception as e:
-            print(f"Error executing custom prompt: {e}")
+            logging.error(f"Error executing custom prompt: {str(e)}")
             messagebox.showerror('Error', f'Failed to execute custom prompt: {str(e)}')
     
     def explain_text(self):
@@ -831,17 +875,25 @@ TEXT TO transform and explain:
 
 Remember to only provide the explanation in Indonesian without any extra text afterwards."""
             
+            # Log the explanation prompt being sent
+            logging.info(f"Sending explanation prompt to Gemini API: {self.input_value[:100]}...")
+            
             # Generate response with direct prompt
             response = self.model.generate_content(prompt)
+            
+            # Log the response received
+            logging.info(f"Received explanation response from Gemini API: {response.text[:100]}...")
             
             # Extract the content from the response
             explanation = response.text.strip()
             
             # Create notification window with explanation
             self.show_explanation_window(explanation)
-        except Exception as e:
-            print(f"Error explaining text: {e}")
             
+        except Exception as e:
+            logging.error(f"Error explaining text: {str(e)}")
+            print(f"Error explaining text: {e}")
+    
     def show_explanation_window(self, explanation_text):
         """Show a notification window with the explanation"""
         # Create a new window
