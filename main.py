@@ -1063,7 +1063,7 @@ Remember to only provide the explanation in Indonesian without any extra text af
         """Increment correction count and show donation window if needed"""
         self.correction_count += 1
         self._save_correction_count()
-        if self.correction_count % 2 == 0:
+        if self.correction_count % 50 == 0 and self.correction_count == 5:
             self.show_donate_window()
     
     def correct_text(self, text):
