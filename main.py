@@ -1,13 +1,12 @@
 import keyboard
 import tkinter as tk
-from tkinter import Frame, Text, Label, messagebox, Canvas,ttk
+from tkinter import Frame, Text, Label, messagebox,ttk
 import threading
 import pyautogui
 import pystray
 import os
 import sys
 import google.generativeai as genai
-from PIL import Image, ImageDraw, ImageFont
 import re
 import show_latest_tips
 from tray_icon import create_tray_icon_image

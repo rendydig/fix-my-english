@@ -56,3 +56,8 @@ The project's dependencies can be inferred from the `requirements.txt` file and 
 ```bash
 pyinstaller --onefile --noconsole --icon=icon.ico main.py 
 ```
+
+## alternative build (windows only)
+```
+.\build_small_exe.bat
+```

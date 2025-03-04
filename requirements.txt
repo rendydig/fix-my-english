@@ -7,3 +7,5 @@ openai
 google-generativeai>=0.3.0
 PyInstaller 
 wheel
+pyinstaller-hooks-contrib
+pycryptodome
