@@ -37,4 +37,4 @@ build/
 htmlcov/
 .coverage
 .env
-api.key
+*.key
