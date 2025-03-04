@@ -8,6 +8,7 @@ import os
 import sys
 import google.generativeai as genai
 import re
+from show_explanation_window import show_explanation_window
 import show_latest_tips
 from tray_icon import create_tray_icon_image
 import time
@@ -18,6 +19,7 @@ import datetime
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import base64
+from donate_window import show_donate_window
 
 class QuickInputApp:
     def __init__(self):
@@ -74,7 +76,10 @@ class QuickInputApp:
         
         # Initialize the tips feature
         self.setup_tips_feature()
-    
+        
+        # Initialize correction count
+        self.correction_count = self._load_correction_count()
+
     def setup_logging(self):
         """Set up logging configuration"""
         log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -288,6 +293,7 @@ class QuickInputApp:
                 )),
                 pystray.MenuItem('Show Latest Tip', lambda: show_latest_tips.show_latest_tips(self))
             )),
+            pystray.MenuItem('Donate', self.show_donate_window),
             pystray.MenuItem('Quit', self.quit_app)
         )
         
@@ -443,6 +449,9 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
             # Use pyautogui to type the text
             # We use write instead of typewrite to handle special characters better
             pyautogui.write(corrected_text)
+            
+            # Increment correction count
+            self.increment_correction_count()
         except Exception as e:
             logging.error(f"Error auto-typing text: {str(e)}")
             messagebox.showerror('Error', f'Failed to generate text: {str(e)}')
@@ -854,105 +863,7 @@ Explanation:
             logging.error(f"Error decrypting API key: {str(e)}")
             return None
 
-    def show_api_key_dialog(self):
-        """Show a dialog to input the Google Gemini API key"""
-        # Create a new window
-        api_window = tk.Toplevel(self.root)
-        api_window.title("API Key Required")
-        api_window.geometry("400x200")
-        api_window.resizable(False, False)
-        api_window.configure(bg="#ffffff")
-        
-        # Make the window appear on top
-        api_window.attributes("-topmost", True)
-        
-        # Center the window on the screen
-        window_width = 400
-        window_height = 200
-        screen_width = api_window.winfo_screenwidth()
-        screen_height = api_window.winfo_screenheight()
-        x_position = (screen_width - window_width) // 2
-        y_position = (screen_height - window_height) // 2
-        api_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
-        
-        # Add a label with instructions
-        Label(api_window, text="Please enter your Google Gemini API Key:", 
-              font=("Segoe UI", 11), bg="#ffffff", fg="#333333").pack(pady=(20, 10))
-        
-        # Add a text field for the API key
-        api_entry = Text(api_window, height=1, width=40, font=("Segoe UI", 10),
-                        relief="solid", bd=1)
-        api_entry.pack(pady=(0, 20), padx=20)
-        
-        # Variable to track if the API key was saved successfully
-        self.api_key_saved = False
-        
-        # Function to save the API key
-        def save_api_key():
-            api_key = api_entry.get("1.0", "end-1c").strip()
-            if not api_key:
-                messagebox.showerror("Error", "API Key cannot be empty!")
-                return
-            
-            try:
-                # Encrypt the API key
-                encrypted_key = self.encrypt_api_key(api_key)
-                if encrypted_key:
-                    # Save the encrypted key to the file
-                    with open('api.key', 'w') as f:
-                        f.write(encrypted_key)
-                    
-                    # Set the API key in the environment
-                    os.environ["GOOGLE_API_KEY"] = api_key
-                    
-                    # Initialize the model
-                    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-                    self.model = genai.GenerativeModel('gemini-2.0-flash')
-                    
-                    # Set the flag to indicate successful save
-                    self.api_key_saved = True
-                    
-                    # Close the window
-                    api_window.destroy()
-                    
-                    # Initialize the tips feature
-                    self.setup_tips_feature()
-                    
-                    # Show success message
-                    messagebox.showinfo("Success", "API Key saved successfully!")
-                else:
-                    messagebox.showerror("Error", "Failed to encrypt API key!")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to save API key: {str(e)}")
-        
-        # Function to handle window close event
-        def on_closing():
-            if not self.api_key_saved:
-                if messagebox.askokcancel("Quit", "API Key is required to run the application. Are you sure you want to quit?"):
-                    api_window.destroy()
-                    # Exit the application gracefully
-                    self.exit_application()
-            else:
-                api_window.destroy()
-        
-        # Set the window close handler
-        api_window.protocol("WM_DELETE_WINDOW", on_closing)
-        
-        # Add a save button
-        save_button = tk.Button(api_window, text="Save", font=("Segoe UI", 10, "bold"),
-                              bg="#3498db", fg="white", relief="flat", padx=15, pady=5,
-                              command=save_api_key, cursor="hand2")
-        save_button.pack(pady=(0, 20))
-        
-        # Focus on the entry field
-        api_entry.focus_set()
-        
-        # Wait for the window to be closed
-        api_window.wait_window()
-        
-        # Return whether the API key was saved successfully
-        return self.api_key_saved
-
+   
     def setup_api_key(self):
         """Set up the Google Gemini API key"""
         if "GOOGLE_API_KEY" not in os.environ:
@@ -1046,7 +957,7 @@ Remember to be concise and direct in your response."""
             
             if self.explain_var.get():
                 # If explain is also toggled, show the result in a notification window
-                self.show_explanation_window(result)
+                show_explanation_window(self, result)
             else:
                 # Otherwise, auto-type the result
                 pyautogui.write(result)
@@ -1087,84 +998,13 @@ Remember to only provide the explanation in Indonesian without any extra text af
             explanation = response.text.strip()
             
             # Create notification window with explanation
-            self.show_explanation_window(explanation)
+            show_explanation_window(self, explanation)
             
         except Exception as e:
             logging.error(f"Error explaining text: {str(e)}")
             print(f"Error explaining text: {e}")
     
-    def show_explanation_window(self, explanation_text):
-        """Show a notification window with the explanation"""
-        # Create a new window
-        explanation_window = tk.Toplevel(self.root)
-        explanation_window.title("Explanation")
-        explanation_window.overrideredirect(True)  # Remove window border
-        explanation_window.attributes("-topmost", True)  # Always on top
-        
-        # Set window size and position
-        window_width = 450
-        window_height = 350
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x_position = (screen_width - window_width) // 2
-        y_position = (screen_height - window_height) // 2
-        explanation_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
-        
-        # Create a canvas for rounded rectangle background
-        canvas = tk.Canvas(explanation_window, bg="#3498db", highlightthickness=0)
-        canvas.pack(fill=tk.BOTH, expand=True)
-        
-        # Add the create_rounded_rectangle method to this canvas
-        canvas.create_rounded_rectangle = lambda *args, **kwargs: self._create_rounded_rectangle(canvas, *args, **kwargs)
-        
-        # Draw rounded rectangle
-        radius = 15
-        canvas.create_rounded_rectangle(
-            3, 3, window_width-3, window_height-3, radius, 
-            fill="#ffffff", outline="#3498db", width=2
-        )
-        
-        # Add title
-        title_label = Label(canvas, text="Explanation", font=("Segoe UI", 14, "bold"), 
-                          bg="#ffffff", fg="#3498db")
-        title_label.place(relx=0.5, rely=0.12, anchor="center")
-        
-        # Create a frame for the scrollable content
-        content_frame = Frame(canvas, bg="#ffffff")
-        content_frame.place(relx=0.5, rely=0.45, anchor="center", width=window_width-40, height=window_height-160)
-        
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(content_frame, orient="vertical", style="rounded.Vertical.TScrollbar")
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Add text widget for the explanation
-        explanation_text_widget = Text(content_frame, font=("Segoe UI", 10), 
-                                     bg="#ffffff", fg="#34495e", wrap=tk.WORD,
-                                     yscrollcommand=scrollbar.set)
-        explanation_text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=explanation_text_widget.yview)
-        
-        # Insert the explanation
-        explanation_text_widget.insert(tk.END, explanation_text)
-        explanation_text_widget.config(state=tk.DISABLED)  # Make it read-only
-        
-        # Add close button
-        close_button = Label(canvas, text="×", font=("Segoe UI", 16, "bold"), 
-                           bg="#ffffff", fg="#e74c3c", cursor="hand2")
-        close_button.place(relx=0.95, rely=0.05, anchor="ne")
-        close_button.bind("<Button-1>", lambda e: explanation_window.destroy())
-        
-        # Add "OK" button
-        ok_button = tk.Button(canvas, text="OK", font=("Segoe UI", 10, "bold"),
-                            bg="#3498db", fg="white", relief="flat", padx=15, pady=5,
-                            command=explanation_window.destroy, cursor="hand2")
-        ok_button.place(relx=0.5, rely=0.85, anchor="center")
-        
-        # Make window draggable
-        canvas.bind("<ButtonPress-1>", lambda event: self._start_dragging(event, explanation_window))
-        canvas.bind("<ButtonRelease-1>", lambda event: self._stop_dragging(event))
-        canvas.bind("<B1-Motion>", lambda event: self._do_dragging(event, explanation_window))
-        
+      
     def _start_dragging(self, event, window):
         """Start dragging a window"""
         self._drag_x = event.x
@@ -1187,6 +1027,65 @@ Remember to only provide the explanation in Indonesian without any extra text af
         y = window.winfo_y() + deltay
         
         window.geometry(f"+{x}+{y}")
+    
+    def show_donate_window(self):
+        """Show the donation window"""
+        from donate_window import show_donate_window
+        self.donate_window, _ = show_donate_window()
+    
+    def _load_correction_count(self):
+        """Load the correction count from encrypted storage"""
+        if os.path.exists('ctx.dll'):
+            try:
+                with open('ctx.dll', 'r') as f:
+                    encrypted_count_b64 = f.read()
+                decrypted = self.decrypt_api_key(encrypted_count_b64)
+                if decrypted:
+                    return int(decrypted)
+                return 0
+            except Exception as e:
+                logging.error(f"Error loading correction count: {str(e)}")
+                return 0
+        return 0
+
+    def _save_correction_count(self):
+        """Save the correction count to encrypted storage"""
+        try:
+            count_str = str(self.correction_count)
+            encrypted = self.encrypt_api_key(count_str)
+            if encrypted:
+                with open('ctx.dll', 'w') as f:
+                    f.write(encrypted)
+        except Exception as e:
+            logging.error(f"Error saving correction count: {str(e)}")
+    
+    def increment_correction_count(self):
+        """Increment correction count and show donation window if needed"""
+        self.correction_count += 1
+        self._save_correction_count()
+        if self.correction_count % 2 == 0:
+            self.show_donate_window()
+    
+    def correct_text(self, text):
+        # Add your text correction logic here
+        corrected_text = text  # Replace with actual correction logic
+        if corrected_text and corrected_text != text:
+            self.increment_correction_count()
+        return corrected_text
+    
+    def replace_text(self, text):
+        # Add your text replacement logic here
+        success = True  # Replace with actual replacement logic
+        if success:
+            self.increment_correction_count()
+        return success
+    
+    def auto_replace_text(self, text):
+        # Add your auto text replacement logic here
+        success = True  # Replace with actual replacement logic
+        if success:
+            self.increment_correction_count()
+        return success
     
 if __name__ == "__main__":
     app = QuickInputApp()

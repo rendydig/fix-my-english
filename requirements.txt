@@ -9,3 +9,4 @@ PyInstaller
 wheel
 pyinstaller-hooks-contrib
 pycryptodome
+pyside6
