@@ -16,6 +16,9 @@ from loading_window import LoadingWindow
 from notification_window import NotificationWindow
 import logging
 import datetime
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+import base64
 
 class QuickInputApp:
     def __init__(self):
@@ -67,26 +70,8 @@ class QuickInputApp:
         self.setup_tray_icon()
         
         # Set up Google Generative AI
-        if "GOOGLE_API_KEY" not in os.environ:
-            try:
-                if not os.path.exists('api.key'):
-                    messagebox.showerror('Error', 'api.key file not found! Please create the file with your Google API key.')
-                    return
-                
-                with open('api.key', 'r') as f:
-                    api_key = f.read().strip()
-                    if not api_key:
-                        messagebox.showerror('Error', 'api.key file is empty! Please add your Google API key to the file.')
-                        return
-                    
-                os.environ["GOOGLE_API_KEY"] = api_key
-            except Exception as e:
-                messagebox.showerror('Error', f'Failed to read api.key: {str(e)}')
-                return
-        
-        # Initialize the model
-        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        if not self.setup_api_key():
+            return
         
         # Initialize the tips feature
         self.setup_tips_feature()
@@ -819,6 +804,221 @@ Explanation:
         """Set tips interval to 10 minutes"""
         self.set_tips_interval("10min")
     
+    def encrypt_api_key(self, api_key):
+        """Encrypt the API key using AES encryption"""
+        try:
+            # Convert the encryption key to bytes
+            encryption_key = "FixMyEnglish$$".encode('utf-8')
+            # Pad the encryption key to be 16, 24, or 32 bytes long (AES requirement)
+            encryption_key = encryption_key.ljust(32)[:32]
+            
+            # Create a new AES cipher
+            cipher = AES.new(encryption_key, AES.MODE_CBC)
+            
+            # Pad the data and encrypt it
+            ct_bytes = cipher.encrypt(pad(api_key.encode('utf-8'), AES.block_size))
+            
+            # Get the initialization vector
+            iv = cipher.iv
+            
+            # Combine IV and ciphertext and encode as base64
+            encrypted_data = base64.b64encode(iv + ct_bytes).decode('utf-8')
+            
+            return encrypted_data
+        except Exception as e:
+            logging.error(f"Error encrypting API key: {str(e)}")
+            return None
+
+    def decrypt_api_key(self, encrypted_data):
+        """Decrypt the API key using AES encryption"""
+        try:
+            # Convert the encryption key to bytes
+            encryption_key = "FixMyEnglish$$".encode('utf-8')
+            # Pad the encryption key to be 16, 24, or 32 bytes long (AES requirement)
+            encryption_key = encryption_key.ljust(32)[:32]
+            
+            # Decode the base64 data
+            encrypted_bytes = base64.b64decode(encrypted_data)
+            
+            # Extract the IV (first 16 bytes)
+            iv = encrypted_bytes[:16]
+            ct = encrypted_bytes[16:]
+            
+            # Create a new AES cipher with the extracted IV
+            cipher = AES.new(encryption_key, AES.MODE_CBC, iv)
+            
+            # Decrypt and unpad the data
+            pt = unpad(cipher.decrypt(ct), AES.block_size)
+            
+            return pt.decode('utf-8')
+        except Exception as e:
+            logging.error(f"Error decrypting API key: {str(e)}")
+            return None
+
+    def show_api_key_dialog(self):
+        """Show a dialog to input the Google Gemini API key"""
+        # Create a new window
+        api_window = tk.Toplevel(self.root)
+        api_window.title("API Key Required")
+        api_window.geometry("400x200")
+        api_window.resizable(False, False)
+        api_window.configure(bg="#ffffff")
+        
+        # Make the window appear on top
+        api_window.attributes("-topmost", True)
+        
+        # Center the window on the screen
+        window_width = 400
+        window_height = 200
+        screen_width = api_window.winfo_screenwidth()
+        screen_height = api_window.winfo_screenheight()
+        x_position = (screen_width - window_width) // 2
+        y_position = (screen_height - window_height) // 2
+        api_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+        
+        # Add a label with instructions
+        Label(api_window, text="Please enter your Google Gemini API Key:", 
+              font=("Segoe UI", 11), bg="#ffffff", fg="#333333").pack(pady=(20, 10))
+        
+        # Add a text field for the API key
+        api_entry = Text(api_window, height=1, width=40, font=("Segoe UI", 10),
+                        relief="solid", bd=1)
+        api_entry.pack(pady=(0, 20), padx=20)
+        
+        # Variable to track if the API key was saved successfully
+        self.api_key_saved = False
+        
+        # Function to save the API key
+        def save_api_key():
+            api_key = api_entry.get("1.0", "end-1c").strip()
+            if not api_key:
+                messagebox.showerror("Error", "API Key cannot be empty!")
+                return
+            
+            try:
+                # Encrypt the API key
+                encrypted_key = self.encrypt_api_key(api_key)
+                if encrypted_key:
+                    # Save the encrypted key to the file
+                    with open('api.key', 'w') as f:
+                        f.write(encrypted_key)
+                    
+                    # Set the API key in the environment
+                    os.environ["GOOGLE_API_KEY"] = api_key
+                    
+                    # Initialize the model
+                    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+                    self.model = genai.GenerativeModel('gemini-2.0-flash')
+                    
+                    # Set the flag to indicate successful save
+                    self.api_key_saved = True
+                    
+                    # Close the window
+                    api_window.destroy()
+                    
+                    # Initialize the tips feature
+                    self.setup_tips_feature()
+                    
+                    # Show success message
+                    messagebox.showinfo("Success", "API Key saved successfully!")
+                else:
+                    messagebox.showerror("Error", "Failed to encrypt API key!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save API key: {str(e)}")
+        
+        # Function to handle window close event
+        def on_closing():
+            if not self.api_key_saved:
+                if messagebox.askokcancel("Quit", "API Key is required to run the application. Are you sure you want to quit?"):
+                    api_window.destroy()
+                    # Exit the application gracefully
+                    self.exit_application()
+            else:
+                api_window.destroy()
+        
+        # Set the window close handler
+        api_window.protocol("WM_DELETE_WINDOW", on_closing)
+        
+        # Add a save button
+        save_button = tk.Button(api_window, text="Save", font=("Segoe UI", 10, "bold"),
+                              bg="#3498db", fg="white", relief="flat", padx=15, pady=5,
+                              command=save_api_key, cursor="hand2")
+        save_button.pack(pady=(0, 20))
+        
+        # Focus on the entry field
+        api_entry.focus_set()
+        
+        # Wait for the window to be closed
+        api_window.wait_window()
+        
+        # Return whether the API key was saved successfully
+        return self.api_key_saved
+
+    def setup_api_key(self):
+        """Set up the Google Gemini API key"""
+        if "GOOGLE_API_KEY" not in os.environ:
+            # Check if api.key file exists
+            if not os.path.exists('api.key'):
+                # If file doesn't exist, show the API key input dialog
+                if not self.show_api_key_dialog():
+                    # If the user didn't provide a key, exit the application
+                    return False
+                return self.api_key_saved
+            
+            try:
+                # Read the encrypted API key from the file
+                with open('api.key', 'r') as f:
+                    encrypted_key = f.read().strip()
+                    if not encrypted_key:
+                        # If file is empty, show the API key input dialog
+                        if not self.show_api_key_dialog():
+                            # If the user didn't provide a key, exit the application
+                            return False
+                        return self.api_key_saved
+                    
+                    # Decrypt the API key
+                    api_key = self.decrypt_api_key(encrypted_key)
+                    if not api_key:
+                        # If decryption fails, show the API key input dialog
+                        messagebox.showerror('Error', 'Failed to decrypt API key! Please enter a new one.')
+                        if not self.show_api_key_dialog():
+                            # If the user didn't provide a key, exit the application
+                            return False
+                        return self.api_key_saved
+                    
+                    # Set the API key in the environment
+                    os.environ["GOOGLE_API_KEY"] = api_key
+            except Exception as e:
+                logging.error(f"Failed to read api.key: {str(e)}")
+                messagebox.showerror('Error', f'Failed to read api.key: {str(e)}')
+                if not self.show_api_key_dialog():
+                    # If the user didn't provide a key, exit the application
+                    return False
+                return self.api_key_saved
+        
+        # Initialize the model
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        return True
+
+    def exit_application(self):
+        """Exit the application gracefully"""
+        logging.info("Exiting application")
+        try:
+            # Clean up resources
+            if hasattr(self, 'icon') and self.icon:
+                self.icon.stop()
+            
+            # Destroy the root window
+            if hasattr(self, 'root') and self.root:
+                self.root.destroy()
+            
+            # Exit the application
+            sys.exit(0)
+        except Exception as e:
+            logging.error(f"Error during exit: {str(e)}")
+            sys.exit(1)
+
     def execute_custom_prompt(self):
         """Execute a custom prompt directly with Gemini"""
         if not self.input_value.strip():
