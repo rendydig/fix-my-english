@@ -1,11 +1,14 @@
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QApplication
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings, QWebEngineUrlRequestInterceptor
-from PySide6.QtCore import QUrl, Signal, QObject
+from PySide6.QtCore import QUrl, Signal, QObject, Slot, Property
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWebChannel import QWebChannel
 import sys
 import os
 import logging
-from donation_page_html import DONATION_PAGE_HTML
+from donation_page_html import get_donation_page_html
+from logging_utils import safe_log_url
 
 # Set Chromium flags to suppress SSL errors and disable web security for redirections
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--log-level=3 --ignore-certificate-errors --disable-web-security"
@@ -13,9 +16,23 @@ os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--log-level=3 --ignore-certificate-e
 class UrlRequestInterceptor(QWebEngineUrlRequestInterceptor):
     """Intercepts URL requests to handle them properly"""
     def interceptRequest(self, info):
-        url = info.requestUrl().toString()
-        logging.info(f"Intercepted URL request: {url}")
+        try:
+            url = info.requestUrl().toString()
+            # Use safe_log_url to avoid encoding issues
+            logging.info(f"Intercepted URL request: {safe_log_url(url)}")
+        except Exception as e:
+            # If there's any error in logging, just silently continue
+            logging.error(f"Error logging intercepted URL: {str(e.__class__.__name__)}")
         # We don't block any requests, just log them
+
+class WebBridge(QObject):
+    """Bridge between JavaScript and Python"""
+    
+    @Slot(str)
+    def openExternalUrl(self, url_string):
+        """Open URL in system browser"""
+        logging.info(f"Opening external URL from JS bridge: {safe_log_url(url_string)}")
+        QDesktopServices.openUrl(QUrl(url_string))
 
 class DonateWebPage(QWebEnginePage):
     """Custom web page that ignores SSL certificate errors and handles navigation"""
@@ -39,21 +56,20 @@ class DonateWebPage(QWebEnginePage):
         
     def javaScriptConsoleMessage(self, level, message, line, source):
         # Log JavaScript console messages but don't show them to the user
-        logging.info(f"JavaScript Console ({source}:{line}): {message}")
+        logging.info(f"JavaScript Console ({safe_log_url(source)}:{line}): {safe_log_url(message, max_length=200)}")
     
     def acceptNavigationRequest(self, url, type, isMainFrame):
         # Emit signal when navigation is requested
         if isMainFrame:
             self.navigationRequested.emit(url)
-            logging.info(f"Navigation requested to: {url.toString()}")
+            logging.info(f"Navigation requested to: {safe_log_url(url.toString())}")
         return True
     
     def handleNavigation(self, url):
         # Handle navigation to external URLs
         url_string = url.toString()
-        if url_string.startswith("https://") and not url_string.startswith("file://"):
-            logging.info(f"External URL navigation: {url_string}")
-            # We'll let the navigation proceed, but log it
+        logging.info(f"Navigation requested to: {safe_log_url(url_string)}")
+        # We'll let the navigation proceed, but log it
 
 class DonateWindow(QMainWindow):
     def __init__(self, parent=None):
@@ -80,20 +96,22 @@ class DonateWindow(QMainWindow):
         settings.setAttribute(QWebEngineSettings.AllowRunningInsecureContent, True)
         settings.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows, True)
         
-        # Additional settings to enable loading content from HTTPS
-        # Note: WebSecurityEnabled is not available in this version of PySide6
-        # Using alternative settings to achieve the same goal
-        
         # Create web view with custom page
         self.web_view = QWebEngineView()
         self.web_page = DonateWebPage(self.profile, self.web_view)
         self.web_view.setPage(self.web_page)
         
+        # Set up the web channel for JavaScript communication
+        self.channel = QWebChannel()
+        self.bridge = WebBridge()
+        self.channel.registerObject("handler", self.bridge)
+        self.web_page.setWebChannel(self.channel)
+        
         # Connect to page signals
         self.web_page.navigationRequested.connect(self.on_navigation_requested)
         
-        # Load HTML content directly from the Python string
-        self.web_view.setHtml(DONATION_PAGE_HTML, QUrl("file://"))
+        # Load HTML content directly from the Python string with the updated donation URL
+        self.web_view.setHtml(get_donation_page_html(), QUrl("file://"))
 
         # Set layout
         central_widget = QWidget()
@@ -117,14 +135,16 @@ class DonateWindow(QMainWindow):
     def on_navigation_requested(self, url):
         """Handle navigation requests from the web page"""
         url_string = url.toString()
-        logging.info(f"Navigation requested to: {url_string}")
+        logging.info(f"Navigation requested to: {safe_log_url(url_string)}")
         
-        # For external URLs, we can choose to open in system browser instead
-        # But for now, we'll let the web view handle it
+        # For donation URLs, open in system browser instead
         if url_string.startswith("https://trakteer.id"):
-            logging.info("Allowing navigation to donation site")
-            # We could use QDesktopServices.openUrl(url) to open in system browser
-            # But we'll let the web view handle it for now
+            logging.info("Opening donation site in system browser")
+            QDesktopServices.openUrl(url)
+            # Return False to prevent the web view from navigating
+            return False
+        
+        return True
 
 def show_donate_window():
     """Create and show a standalone donation window"""
@@ -151,9 +171,10 @@ def create_qt_conf():
     return qt_conf_path
 
 if __name__ == "__main__":
-    # Configure basic logging
+    # Configure basic logging with proper encoding
     logging.basicConfig(level=logging.INFO, 
-                      format='%(asctime)s - %(levelname)s - %(message)s')
+                      format='%(asctime)s - %(levelname)s - %(message)s',
+                      encoding='utf-8')
     
     # Create qt.conf file for DPI handling
     create_qt_conf()

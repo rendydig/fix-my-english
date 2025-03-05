@@ -2,6 +2,7 @@
 Module containing the HTML content for the donation page.
 This allows the HTML to be included in the Python executable without requiring an external file.
 """
+from fetch_donation_url import fetch_donation_url
 
 # HTML content as a Python string
 DONATION_PAGE_HTML = """<!DOCTYPE html>
@@ -9,7 +10,7 @@ DONATION_PAGE_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: http: qrc:; script-src 'self' 'unsafe-inline' 'unsafe-eval' qrc:; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data: blob:;">
     <title>Support Fix My English</title>
     <style>
         * {
@@ -124,6 +125,7 @@ DONATION_PAGE_HTML = """<!DOCTYPE html>
             font-style: italic;
         }
     </style>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body>
     <div class="container">
@@ -158,18 +160,46 @@ DONATION_PAGE_HTML = """<!DOCTYPE html>
     </div>
     
     <script>
+        // Initialize the Qt web channel
+        let handler;
+        
+        // This function will be called once the web channel is set up
+        function onWebChannelReady(channel) {
+            // Get the handler object that was registered in Python
+            handler = channel.objects.handler;
+            console.log("Web channel initialized successfully");
+        }
+        
+        // Set up the web channel when the document is ready
+        document.addEventListener("DOMContentLoaded", function() {
+            if (typeof QWebChannel !== "undefined") {
+                new QWebChannel(qt.webChannelTransport, onWebChannelReady);
+                console.log("QWebChannel setup initiated");
+            } else {
+                console.error("QWebChannel not available");
+            }
+        });
+        
         // Handle donation button click
         document.getElementById('donateButton').addEventListener('click', function() {
             // Show loading message
             document.getElementById('loadingMessage').style.display = 'block';
             
-            // Open the donation URL
-            try {
-                window.location.href = 'https://trakteer.id/rendyadi/tip?open=true';
-                console.log('Navigating to donation page...');
-            } catch (error) {
-                console.error('Error navigating to donation page:', error);
-                document.getElementById('loadingMessage').textContent = 'Error opening donation page. Please try again.';
+            const donationUrl = '{{DONATION_URL_PLACEHOLDER}}';
+            
+            // Try to use the web channel if available
+            if (handler) {
+                console.log('Using web channel to open URL');
+                handler.openExternalUrl(donationUrl);
+            } else {
+                console.log('Web channel not available, using fallback method');
+                // Fallback to standard navigation
+                try {
+                    window.location.href = donationUrl;
+                } catch (error) {
+                    console.error('Error navigating to donation page:', error);
+                    document.getElementById('loadingMessage').textContent = 'Error opening donation page. Please try again.';
+                }
             }
         });
         
@@ -203,12 +233,21 @@ DONATION_PAGE_HTML = """<!DOCTYPE html>
                 })(images[i]);
             }
         });
-        
-        // Handle any SSL or navigation errors
-        window.addEventListener('error', function(e) {
-            console.error('Page error:', e.message);
-            return true; // Prevent default error handling
-        });
     </script>
 </body>
-</html>"""
+</html>
+"""
+
+# Replace the donation URL placeholder with the actual URL
+def get_donation_page_html():
+    """
+    Get the donation page HTML with the actual donation URL fetched from the server.
+    """
+    try:
+        donation_url = fetch_donation_url()
+        return DONATION_PAGE_HTML.replace('{{DONATION_URL_PLACEHOLDER}}', donation_url)
+    except Exception as e:
+        import logging
+        logging.error(f"Error in get_donation_page_html: {str(e)}")
+        # Fallback to default URL if there's an error
+        return DONATION_PAGE_HTML.replace('{{DONATION_URL_PLACEHOLDER}}', 'https://trakteer.id/rendyadi/tip?open=true')

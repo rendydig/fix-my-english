@@ -20,6 +20,10 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import base64
 from donate_window import show_donate_window
+from logging_utils import configure_utf8_logging
+
+# Configure logging with UTF-8 encoding
+configure_utf8_logging()
 
 class QuickInputApp:
     def __init__(self):
@@ -28,6 +32,10 @@ class QuickInputApp:
         self.input_value = ""
         self.service_running = True
         self.last_position = None  # Initialize last_position to avoid AttributeError
+        
+        # Version information
+        self.version = "1.0.0"
+        self.current_os = sys.platform
         
         # Tips feature variables
         self.tips_enabled = False  # Disabled by default
@@ -293,6 +301,7 @@ class QuickInputApp:
                 )),
                 pystray.MenuItem('Show Latest Tip', lambda: show_latest_tips.show_latest_tips(self))
             )),
+            pystray.MenuItem('Check for Updates', self.check_for_updates),
             pystray.MenuItem('Donate', self.show_donate_window),
             pystray.MenuItem('Quit', self.quit_app)
         )
@@ -512,6 +521,20 @@ Remember to ONLY return the corrected version of the text above, nothing else.""
             
             # Show notification window with instructions
             NotificationWindow(self.root)
+            
+            # Check for updates
+            loading_window = LoadingWindow(self.root)
+            loading_window.update_status("Checking for updates...")
+            self.root.update()
+            
+            try:
+                from check_update import check_for_updates
+                # Don't show up-to-date notification during startup
+                check_for_updates(self, show_up_to_date_notification=False)
+            except Exception as e:
+                logging.error(f"Error checking for updates: {str(e)}")
+            finally:
+                loading_window.close()
         
             # Start the main application
             self.root.mainloop()
@@ -1086,6 +1109,16 @@ Remember to only provide the explanation in Indonesian without any extra text af
         if success:
             self.increment_correction_count()
         return success
+    
+    def check_for_updates(self):
+        """Manually check for updates"""
+        try:
+            from check_update import check_for_updates
+            # Show up-to-date notification when manually checking
+            check_for_updates(self, show_up_to_date_notification=True)
+        except Exception as e:
+            logging.error(f"Error checking for updates: {str(e)}")
+            messagebox.showerror('Error', f'Failed to check for updates: {str(e)}')
     
 if __name__ == "__main__":
     app = QuickInputApp()

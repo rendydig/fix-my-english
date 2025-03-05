@@ -10,8 +10,8 @@ class NotificationWindow:
         self.root.attributes("-topmost", True)  # Always on top
         
         # Set window size and position
-        window_width = 400
-        window_height = 300
+        window_width = 450
+        window_height = 350
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         x_position = (screen_width - window_width) // 2
@@ -52,7 +52,7 @@ class NotificationWindow:
         
         # Create a frame for the instructions with scrollbar
         instruction_container = Frame(self.canvas, bg="#ffffff")
-        instruction_container.place(relx=0.5, rely=0.5, anchor="center", width=350, height=150)
+        instruction_container.place(relx=0.5, rely=0.5, anchor="center", width=400, height=180)
         
         # Add scrollbar to the instruction container
         scrollbar = ttk.Scrollbar(instruction_container, orient="vertical", style="rounded.Vertical.TScrollbar")
@@ -150,4 +150,3 @@ class NotificationWindow:
         if hasattr(self, 'instruction_canvas'):
             self.instruction_canvas.unbind("<MouseWheel>")
         self.root.destroy()
-
